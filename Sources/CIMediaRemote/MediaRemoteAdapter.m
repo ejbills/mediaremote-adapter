@@ -148,6 +148,10 @@ convertNowPlayingInformation(NSDictionary *information) {
       NSNumber *mode = information[(NSString *)kMRMediaRemoteNowPlayingInfoRepeatMode];
       return mode;
     });
+    setValue((NSString *)kPlaybackRate, ^id {
+      NSNumber *rate = information[(NSString *)kMRMediaRemoteNowPlayingInfoPlaybackRate];
+      return rate;
+    });
 
     return data;
 }

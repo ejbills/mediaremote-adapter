@@ -17,3 +17,4 @@ NSString *const kTimestampEpochMicros = @"timestampEpochMicros";
 NSString *const kPID = @"PID";
 NSString *const kShuffleMode = @"shuffleMode";
 NSString *const kRepeatMode = @"repeatMode";
+NSString *const kPlaybackRate = @"playbackRate";

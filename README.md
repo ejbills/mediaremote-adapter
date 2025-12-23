@@ -105,15 +105,19 @@ let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
 
 ### TrackInfo.Payload
 
-| Property | Type |
-|----------|------|
-| `title`, `artist`, `album`, `applicationName`, `bundleIdentifier` | `String?` |
-| `isPlaying` | `Bool?` |
-| `durationMicros`, `elapsedTimeMicros`, `timestampEpochMicros` | `Double?` |
-| `artwork` | `NSImage?` (computed) |
-| `PID` | `pid_t?` |
-| `shuffleMode` | `ShuffleMode?` |
-| `repeatMode` | `RepeatMode?` |
+| Property | Type | Description |
+|----------|------|-------------|
+| `title`, `artist`, `album`, `applicationName`, `bundleIdentifier` | `String?` | |
+| `isPlaying` | `Bool?` | |
+| `durationMicros`, `elapsedTimeMicros`, `timestampEpochMicros` | `Double?` | |
+| `playbackRate` | `Double?` | 1.0 = playing, 0.0 = paused |
+| `currentElapsedTime` | `TimeInterval?` | **Computed** - real-time position in seconds |
+| `artwork` | `NSImage?` | Computed from base64 data |
+| `PID` | `pid_t?` | |
+| `shuffleMode` | `ShuffleMode?` | |
+| `repeatMode` | `RepeatMode?` | |
+
+> **Note:** `elapsedTimeMicros` is stale (captured at last state change). Use `currentElapsedTime` for accurate position.
 
 ## Acknowledgements
 

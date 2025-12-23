@@ -31,6 +31,7 @@ public struct TrackInfo: Codable {
         public let PID: pid_t?
         public let shuffleMode: ShuffleMode?
         public let repeatMode: RepeatMode?
+        public let playbackRate: Double?
 
         public var artwork: NSImage? {
             guard let base64String = artworkDataBase64,
@@ -45,8 +46,26 @@ public struct TrackInfo: Codable {
             return "\(title ?? "")-\(artist ?? "")-\(album ?? "")"
         }
 
+        /// Returns the current elapsed time in seconds, accounting for playback since the last update.
+        /// This computes: elapsedTime + (timeSinceUpdate * playbackRate)
+        public var currentElapsedTime: TimeInterval? {
+            guard let elapsedMicros = elapsedTimeMicros,
+                  let timestampMicros = timestampEpochMicros else {
+                return nil
+            }
+
+            let elapsedSeconds = elapsedMicros / 1_000_000
+            let timestampSeconds = timestampMicros / 1_000_000
+            let rate = playbackRate ?? 0.0
+
+            let now = Date().timeIntervalSince1970
+            let timeSinceUpdate = now - timestampSeconds
+
+            return elapsedSeconds + (timeSinceUpdate * rate)
+        }
+
         enum CodingKeys: String, CodingKey {
-            case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros, PID, shuffleMode, repeatMode
+            case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros, PID, shuffleMode, repeatMode, playbackRate
         }
 
         public init(from decoder: Decoder) throws {
@@ -74,6 +93,7 @@ public struct TrackInfo: Codable {
 
             self.shuffleMode = try? container.decodeIfPresent(ShuffleMode.self, forKey: .shuffleMode)
             self.repeatMode = try? container.decodeIfPresent(RepeatMode.self, forKey: .repeatMode)
+            self.playbackRate = try container.decodeIfPresent(Double.self, forKey: .playbackRate)
 
             if let boolValue = try? container.decode(Bool.self, forKey: .isPlaying) {
                 self.isPlaying = boolValue
