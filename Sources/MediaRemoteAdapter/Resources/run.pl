@@ -74,6 +74,9 @@ install_xsub("next_track", $libref);
 install_xsub("previous_track", $libref);
 install_xsub("stop_command", $libref);
 install_xsub("set_time_from_env", $libref);
+install_xsub("set_shuffle_mode", $libref);
+install_xsub("set_repeat_mode", $libref);
+install_xsub("get", $libref);
 
 # 4. Call the bootstrap function to initialize the C code.
 bootstrap();
@@ -98,6 +101,18 @@ if ($command eq 'loop') {
     die "Missing time argument for set_time\n" unless defined $time;
     $ENV{'MEDIAREMOTE_SET_TIME'} = $time;
     set_time_from_env();
+} elsif ($command eq 'set_shuffle_mode') {
+    my $mode = $ARGV[0];
+    die "Missing mode argument for set_shuffle_mode\n" unless defined $mode;
+    $ENV{'MEDIAREMOTE_SET_SHUFFLE_MODE'} = $mode;
+    set_shuffle_mode();
+} elsif ($command eq 'set_repeat_mode') {
+    my $mode = $ARGV[0];
+    die "Missing mode argument for set_repeat_mode\n" unless defined $mode;
+    $ENV{'MEDIAREMOTE_SET_REPEAT_MODE'} = $mode;
+    set_repeat_mode();
+} elsif ($command eq 'get') {
+    get();
 } else {
     die "Unknown command: $command\n";
 }

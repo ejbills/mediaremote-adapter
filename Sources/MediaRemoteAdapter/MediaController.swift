@@ -17,8 +17,10 @@ public class MediaController {
     private var currentTrackIdentifier: String?
     private var isPlaying = false
     private var seekTimer: Timer?
+    private var eventCount = 0
+    private let restartThreshold = 100
 
-    public var onTrackInfoReceived: ((TrackInfo) -> Void)?
+    public var onTrackInfoReceived: ((TrackInfo?) -> Void)?
     public var onListenerTerminated: (() -> Void)?
     public var onDecodingError: ((Error, Data) -> Void)?
     public var onPlaybackTimeUpdate: ((_ elapsedTime: TimeInterval) -> Void)?
@@ -72,12 +74,90 @@ public class MediaController {
         }
     }
 
-    public func startListening() {
-        guard listeningProcess == nil else {
-            print("Listener process is already running.")
+    /// Returns the track info independently from the actual listen process.
+    public func getTrackInfo(_ onReceive: @escaping (TrackInfo?) -> Void) {
+        guard let scriptPath = perlScriptPath else {
+            onReceive(nil)
+            return
+        }
+        guard let libraryPath = libraryPath else {
+            onReceive(nil)
             return
         }
 
+        let getProcess = Process()
+        getProcess.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+
+        var getDataBuffer = Data()
+        var callbackExecuted = false
+
+        var arguments = [scriptPath]
+        if let bundleId = bundleIdentifier {
+            arguments.append("--id")
+            arguments.append(bundleId)
+        }
+        arguments.append(contentsOf: [libraryPath, "get"])
+        getProcess.arguments = arguments
+
+        let outputPipe = Pipe()
+        getProcess.standardOutput = outputPipe
+
+        outputPipe.fileHandleForReading.readabilityHandler = { fileHandle in
+            let incomingData = fileHandle.availableData
+            if incomingData.isEmpty {
+                return
+            }
+
+            getDataBuffer.append(incomingData)
+
+            guard let newlineData = "\n".data(using: .utf8),
+                  let range = getDataBuffer.firstRange(of: newlineData),
+                  range.lowerBound <= getDataBuffer.count else {
+                return
+            }
+
+            let lineData = getDataBuffer.subdata(in: 0..<range.lowerBound)
+            getDataBuffer.removeSubrange(0..<range.upperBound)
+
+            if !lineData.isEmpty && !callbackExecuted {
+                callbackExecuted = true
+                // Check for NIL response
+                if lineData == "NIL".data(using: .utf8) {
+                    DispatchQueue.main.async { onReceive(nil) }
+                    return
+                }
+                do {
+                    let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
+                    DispatchQueue.main.async { onReceive(trackInfo) }
+                } catch {
+                    DispatchQueue.main.async { onReceive(nil) }
+                }
+            }
+        }
+
+        getProcess.terminationHandler = { _ in
+            if !callbackExecuted {
+                DispatchQueue.main.async { onReceive(nil) }
+            }
+        }
+
+        do {
+            try getProcess.run()
+        } catch {
+            onReceive(nil)
+        }
+    }
+
+    public func startListening() {
+        guard listeningProcess == nil else {
+            return
+        }
+
+        eventCount = 0
+        startListeningInternal()
+    }
+
+    private func startListeningInternal() {
         guard let scriptPath = perlScriptPath else {
             return
         }
@@ -109,20 +189,41 @@ public class MediaController {
             }
 
             self.dataBuffer.append(incomingData)
-            
+
             // Process all complete lines in the buffer.
-            while let range = self.dataBuffer.firstRange(of: "\n".data(using: .utf8)!) {
+            guard let newlineData = "\n".data(using: .utf8) else { return }
+            while let range = self.dataBuffer.firstRange(of: newlineData) {
+                // Bounds check before accessing subrange
+                guard range.lowerBound <= self.dataBuffer.count else {
+                    break
+                }
+
                 let lineData = self.dataBuffer.subdata(in: 0..<range.lowerBound)
-                
+
                 // Remove the line and the newline character from the buffer.
                 self.dataBuffer.removeSubrange(0..<range.upperBound)
-                
+
+                // Check for NIL response indicating no media player
+                if lineData == "NIL".data(using: .utf8) {
+                    DispatchQueue.main.async {
+                        self.onTrackInfoReceived?(nil)
+                    }
+                    continue
+                }
+
                 if !lineData.isEmpty {
+                    self.eventCount += 1
+
                     do {
                         let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
                         DispatchQueue.main.async {
-                            self.onTrackInfoReceived?(trackInfo)
-                            self.updatePlaybackTimer(with: trackInfo)
+                            // Check if we need to restart after processing
+                            if self.eventCount >= self.restartThreshold {
+                                self.restartListeningProcess()
+                            } else {
+                                self.onTrackInfoReceived?(trackInfo)
+                                self.updatePlaybackTimer(with: trackInfo)
+                            }
                         }
                     } catch {
                         DispatchQueue.main.async {
@@ -137,7 +238,10 @@ public class MediaController {
             DispatchQueue.main.async {
                 self?.listeningProcess = nil
                 self?.playbackTimer?.invalidate()
-                self?.onListenerTerminated?()
+                // Don't call onListenerTerminated if this is a planned restart
+                if self?.eventCount != 0 {
+                    self?.onListenerTerminated?()
+                }
             }
         }
 
@@ -252,5 +356,34 @@ public class MediaController {
         let timePassed = now - info.baseTimestamp
         let currentElapsedTime = info.baseTime + timePassed
         onPlaybackTimeUpdate?(currentElapsedTime)
+    }
+
+    public func setShuffleMode(_ mode: TrackInfo.ShuffleMode) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["set_shuffle_mode", String(mode.rawValue)])
+        }
+    }
+
+    public func setRepeatMode(_ mode: TrackInfo.RepeatMode) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["set_repeat_mode", String(mode.rawValue)])
+        }
+    }
+
+    private func restartListeningProcess() {
+        // Stop current process
+        listeningProcess?.terminate()
+        listeningProcess = nil
+
+        // Clear data buffer to free any accumulated data
+        dataBuffer.removeAll()
+
+        // Reset event count
+        eventCount = 0
+
+        // Wait a brief moment for cleanup, then restart
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.startListeningInternal()
+        }
     }
 } 

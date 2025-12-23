@@ -21,6 +21,8 @@ static CFRunLoopRef _runLoop = NULL;
 static dispatch_queue_t _queue;
 static dispatch_block_t _debounce_block = NULL;
 static NSString *_targetBundleIdentifier = NULL;
+static pid_t _parentPID = 0;
+static dispatch_source_t _parentMonitorTimer = NULL;
 
 // These keys identify a now playing item uniquely.
 static NSArray<NSString *> *identifyingItemKeys(void) {
@@ -138,6 +140,14 @@ convertNowPlayingInformation(NSDictionary *information) {
       }
       return nil;
     });
+    setValue((NSString *)kShuffleMode, ^id {
+      NSNumber *mode = information[(NSString *)kMRMediaRemoteNowPlayingInfoShuffleMode];
+      return mode;
+    });
+    setValue((NSString *)kRepeatMode, ^id {
+      NSNumber *mode = information[(NSString *)kMRMediaRemoteNowPlayingInfoRepeatMode];
+      return mode;
+    });
 
     return data;
 }
@@ -187,7 +197,10 @@ static void appForPID(int pid, void (^block)(NSRunningApplication *)) {
 // Centralized function to process track info.
 // It converts, filters, and prints the final JSON data.
 static void processNowPlayingInfo(NSDictionary *nowPlayingInfo, BOOL isPlaying, NSRunningApplication *application) {
-    if (nowPlayingInfo == nil || [nowPlayingInfo count] == 0) return;
+    if (nowPlayingInfo == nil || [nowPlayingInfo count] == 0) {
+        printOut(@"NIL");
+        return;
+    }
     id title = nowPlayingInfo[(NSString *)kMRMediaRemoteNowPlayingInfoTitle];
     if (title == nil || title == [NSNull null] || ([title isKindOfClass:[NSString class]] && [(NSString *)title length] == 0)) return;
 
@@ -201,8 +214,9 @@ static void processNowPlayingInfo(NSDictionary *nowPlayingInfo, BOOL isPlaying, 
     if (application) {
         data[(NSString *)kBundleIdentifier] = application.bundleIdentifier;
         data[(NSString *)kApplicationName] = application.localizedName;
+        data[(NSString *)kPID] = [NSString stringWithFormat:@"%d", application.processIdentifier];
     }
-    
+
     printData(data);
 }
 
@@ -241,6 +255,38 @@ static void fetchAndProcess(int pid) {
     });
 }
 
+// Check if parent process is still alive
+static void checkParentProcess(void) {
+    if (_parentPID > 0) {
+        // Use kill(pid, 0) to check if process exists without sending a signal
+        if (kill(_parentPID, 0) != 0) {
+            // Parent process is dead, terminate this process
+            printErr(@"Parent process died, terminating");
+            exit(0);
+        }
+    }
+}
+
+// Set up periodic parent process monitoring
+static void setupParentMonitoring(void) {
+    _parentPID = getppid(); // Get parent process ID
+
+    // Create a timer that checks parent process every 5 seconds
+    _parentMonitorTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue);
+    if (_parentMonitorTimer) {
+        dispatch_source_set_timer(_parentMonitorTimer,
+                                 dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
+                                 5 * NSEC_PER_SEC,
+                                 1 * NSEC_PER_SEC);
+
+        dispatch_source_set_event_handler(_parentMonitorTimer, ^{
+            checkParentProcess();
+        });
+
+        dispatch_resume(_parentMonitorTimer);
+    }
+}
+
 // C function implementations to be called from Perl
 void bootstrap(void) {
     _queue = dispatch_queue_create("mediaremote-adapter", DISPATCH_QUEUE_SERIAL);
@@ -251,6 +297,9 @@ void bootstrap(void) {
     if (bundleIdEnv != NULL) {
         _targetBundleIdentifier = [NSString stringWithUTF8String:bundleIdEnv];
     }
+
+    // Set up parent process monitoring
+    setupParentMonitoring();
 }
 
 void loop(void) {
@@ -322,7 +371,63 @@ void set_time_from_env(void) {
     if (timeStr == NULL) {
         return;
     }
-    
+
     double time = atof(timeStr);
     MRMediaRemoteSetElapsedTime(time);
+}
+
+void set_shuffle_mode(void) {
+    const char *modeStr = getenv("MEDIAREMOTE_SET_SHUFFLE_MODE");
+    if (modeStr == NULL) {
+        return;
+    }
+
+    int mode = atoi(modeStr);
+    MRMediaRemoteSetShuffleMode(mode);
+}
+
+void set_repeat_mode(void) {
+    const char *modeStr = getenv("MEDIAREMOTE_SET_REPEAT_MODE");
+    if (modeStr == NULL) {
+        return;
+    }
+
+    int mode = atoi(modeStr);
+    MRMediaRemoteSetRepeatMode(mode);
+}
+
+void get(void) {
+    __block BOOL completed = NO;
+
+    MRMediaRemoteGetNowPlayingInfo(_queue, ^(CFDictionaryRef information) {
+        if (information == NULL) {
+            printOut(@"NIL");
+            completed = YES;
+            return;
+        }
+        NSDictionary *infoDict = [(__bridge NSDictionary *)information copy];
+        MRMediaRemoteGetNowPlayingApplicationIsPlaying(_queue, ^(Boolean isPlaying) {
+            MRMediaRemoteGetNowPlayingApplicationPID(_queue, ^(int fetchedPid) {
+                if (fetchedPid > 0) {
+                    __block bool appFound = false;
+                    appForPID(fetchedPid, ^(NSRunningApplication *process) {
+                        appFound = true;
+                        processNowPlayingInfo(infoDict, isPlaying, process);
+                    });
+                    if (!appFound) {
+                        processNowPlayingInfo(infoDict, isPlaying, nil);
+                    }
+                } else {
+                    processNowPlayingInfo(infoDict, isPlaying, nil);
+                }
+                completed = YES;
+            });
+        });
+    });
+
+    // Wait for completion with timeout
+    NSDate *timeout = [NSDate dateWithTimeIntervalSinceNow:2.0];
+    while (!completed && [[NSDate date] compare:timeout] == NSOrderedAscending) {
+        [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+    }
 } 

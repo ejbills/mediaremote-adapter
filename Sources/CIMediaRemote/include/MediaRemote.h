@@ -94,6 +94,8 @@ typedef enum {
 
 Boolean MRMediaRemoteSendCommand(MRCommand command, id userInfo);
 void MRMediaRemoteSetElapsedTime(double elapsedTime);
+void MRMediaRemoteSetShuffleMode(int mode);
+void MRMediaRemoteSetRepeatMode(int mode);
 void MRMediaRemoteRegisterForNowPlayingNotifications(dispatch_queue_t queue);
 void MRMediaRemoteUnregisterForNowPlayingNotifications();
 

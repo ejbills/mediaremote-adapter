@@ -4,6 +4,18 @@ import Foundation
 public struct TrackInfo: Codable {
     public let payload: Payload
 
+    public enum ShuffleMode: Int, Codable {
+        case off = 0
+        case songs = 1
+        case albums = 2
+    }
+
+    public enum RepeatMode: Int, Codable {
+        case off = 0
+        case one = 1
+        case all = 2
+    }
+
     public struct Payload: Codable {
         public let title: String?
         public let artist: String?
@@ -16,6 +28,9 @@ public struct TrackInfo: Codable {
         public let artworkDataBase64: String?
         public let artworkMimeType: String?
         public let timestampEpochMicros: Double?
+        public let PID: pid_t?
+        public let shuffleMode: ShuffleMode?
+        public let repeatMode: RepeatMode?
 
         public var artwork: NSImage? {
             guard let base64String = artworkDataBase64,
@@ -31,7 +46,7 @@ public struct TrackInfo: Codable {
         }
 
         enum CodingKeys: String, CodingKey {
-            case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros
+            case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros, PID, shuffleMode, repeatMode
         }
 
         public init(from decoder: Decoder) throws {
@@ -46,6 +61,19 @@ public struct TrackInfo: Codable {
             self.artworkDataBase64 = try container.decodeIfPresent(String.self, forKey: .artworkDataBase64)
             self.artworkMimeType = try container.decodeIfPresent(String.self, forKey: .artworkMimeType)
             self.timestampEpochMicros = try container.decodeIfPresent(Double.self, forKey: .timestampEpochMicros)
+
+            // Handle PID which may come as Int or String
+            if let pidNumber = try? container.decodeIfPresent(Int32.self, forKey: .PID) {
+                self.PID = pid_t(pidNumber)
+            } else if let pidString = try? container.decodeIfPresent(String.self, forKey: .PID),
+                      let pidNumber = Int32(pidString) {
+                self.PID = pid_t(pidNumber)
+            } else {
+                self.PID = nil
+            }
+
+            self.shuffleMode = try? container.decodeIfPresent(ShuffleMode.self, forKey: .shuffleMode)
+            self.repeatMode = try? container.decodeIfPresent(RepeatMode.self, forKey: .repeatMode)
 
             if let boolValue = try? container.decode(Bool.self, forKey: .isPlaying) {
                 self.isPlaying = boolValue

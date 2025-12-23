@@ -1,178 +1,120 @@
 # MediaRemoteAdapter
 
-A Swift package for macOS that provides a robust, modern interface for controlling media playback and receiving track information, designed to work around the sandboxing and entitlement restrictions of the private `MediaRemote.framework`.
-
-## How It Works
-This package uses a unique architecture to gain the necessary permissions for media control:
-
-1.  **Swift `MediaController`:** The public API you interact with in your app. It's a simple, modern Swift class.
-2.  **Objective-C Bridge:** An internal library containing the code that calls the private `MediaRemote.framework` functions.
-3.  **Perl Interpreter:** The `MediaController` does not call the Objective-C code directly. Instead, it executes a bundled Perl script using the system's `/usr/bin/perl`, which has the necessary entitlements to access the media service.
-4.  **Dynamic Loading:** At runtime, the Perl script dynamically loads the compiled Objective-C library, acting as a sandboxed bridge. It passes commands in from your app and streams track data back out over a pipe.
-
-This approach provides the power of the private framework with the safety and convenience of a modern Swift Package.
-
-<img src="https://github.com/user-attachments/assets/ddb17380-37fd-4b63-803e-b82f616db48d" alt="drawing" width="400"/>
+A Swift package for macOS that provides a modern interface for controlling media playback and receiving track information from the private `MediaRemote.framework`.
 
 ## Installation
 
-You can add `MediaRemoteAdapter` to your project using the Swift Package Manager.
+Add `MediaRemoteAdapter` to your project using Swift Package Manager.
 
-1.  In Xcode, open your project and navigate to **File > Add Packages...**
-2.  Enter the repository URL: `https://github.com/ejbills/mediaremote-adapter.git`
-3.  Choose the `MediaRemoteAdapter` product and add it to your application's target.
+1. In Xcode: **File > Add Packages...**
+2. Enter: `https://github.com/ejbills/mediaremote-adapter.git`
+3. Add `MediaRemoteAdapter` to your target.
 
-### Important: Embedding the Framework
+### Embedding the Framework
 
-After adding the package, you must ensure the framework is correctly embedded and signed.
+After adding the package, ensure the framework is correctly embedded:
 
-1.  In the Project Navigator, select your project, then select your main application target.
-2.  Go to the **General** tab.
-3.  Find the **"Frameworks, Libraries, and Embedded Content"** section.
-4.  `MediaRemoteAdapter.framework` should be listed. Change its setting from "Do Not Embed" to **"Embed & Sign"**.
-
-This crucial step copies the framework into your app and signs it with your developer identity, as required by macOS.
+1. Select your project, then your main application target.
+2. Go to the **General** tab.
+3. In **"Frameworks, Libraries, and Embedded Content"**, set `MediaRemoteAdapter.framework` to **"Embed & Sign"**.
 
 ## Usage
 
-### Basic Example
-
-Here is a basic example of how to use `MediaController`.
-
 ```swift
 import MediaRemoteAdapter
-import Foundation
-import AppKit
 
 class YourAppController {
     let mediaController = MediaController()
-    var currentTrackDuration: TimeInterval = 0
 
     init() {
-        // Handle incoming track data
+        // Handle incoming track data (nil when no media player is active)
         mediaController.onTrackInfoReceived = { trackInfo in
-            print("Now Playing: \(trackInfo.payload.title ?? "N/A")")
-            self.currentTrackDuration = (trackInfo.payload.durationMicros ?? 0) / 1_000_000
-            
-            if let artworkImage = trackInfo.payload.artwork {
-                // Use your image here...
+            guard let trackInfo = trackInfo else {
+                print("No media playing")
+                return
             }
-        }
-        
-        // Handle playback time updates for your UI
-        // WARNING: This handler is for demonstration only. It uses a polling
-        // mechanism that can lead to high CPU usage and is not recommended for
-        // production environments. The timer is an estimate.
-        mediaController.onPlaybackTimeUpdate = { elapsedTime in
-            let percentage = self.currentTrackDuration > 0 ? (elapsedTime / self.currentTrackDuration) * 100 : 0
-            print(String(format: "Progress: %.2f%%", percentage))
-            // Update your progress bar here
-        }
-
-        // Optionally handle cases where JSON decoding fails
-        mediaController.onDecodingError = { error, data in
-            print("Failed to decode JSON: \(error)")
+            print("Now Playing: \(trackInfo.payload.title ?? "N/A")")
         }
 
         // Handle listener termination
         mediaController.onListenerTerminated = {
-            print("MediaRemoteAdapter listener process was terminated.")
+            print("Listener terminated")
         }
     }
 
-    func setupAndStart() {
-        // Start listening for media events in the background.
+    func start() {
         mediaController.startListening()
     }
 
-    // All playback commands are asynchronous.
+    // Playback controls
     func play() { mediaController.play() }
     func pause() { mediaController.pause() }
     func togglePlayPause() { mediaController.togglePlayPause() }
     func nextTrack() { mediaController.nextTrack() }
     func previousTrack() { mediaController.previousTrack() }
     func stop() { mediaController.stop() }
-    
-    func seek(to seconds: Double) {
-        mediaController.setTime(seconds: seconds)
-    }
+    func seek(to seconds: Double) { mediaController.setTime(seconds: seconds) }
+
+    // Shuffle and repeat
+    func setShuffle(_ mode: TrackInfo.ShuffleMode) { mediaController.setShuffleMode(mode) }
+    func setRepeat(_ mode: TrackInfo.RepeatMode) { mediaController.setRepeatMode(mode) }
+}
+```
+
+### One-Shot Track Info
+
+Get current track info without starting a listener:
+
+```swift
+mediaController.getTrackInfo { trackInfo in
+    guard let trackInfo = trackInfo else { return }
+    print("Currently playing: \(trackInfo.payload.title ?? "Unknown")")
 }
 ```
 
 ### Filtering by Application
 
-You can create a `MediaController` that only listens for events from a specific application by providing its bundle identifier during initialization. This is useful for creating separate views or controllers for different media apps.
-
 ```swift
-// Controller that only receives events from Apple Music
 let musicController = MediaController(bundleIdentifier: "com.apple.Music")
-musicController.onTrackInfoReceived = { data in
-    // This will only be called for Apple Music events
-}
-musicController.startListening()
-
-// Controller that only receives events from Spotify
 let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
-spotifyController.onTrackInfoReceived = { data in
-    // This will only be called for Spotify events
-}
-spotifyController.startListening()
 ```
 
-### Controlling Specific Applications
+## API
 
-The `MediaRemote` framework sends playback commands to whichever application the system currently considers the "Now Playing" app. **You cannot target a command to a specific background application.**
+### Callbacks
 
-To control a specific app (e.g., Spotify), you must first make it the active media source. This is typically done through user interaction (like pressing play in the app's window) or programmatically via AppleScript.
+| Callback | Description |
+|----------|-------------|
+| `onTrackInfoReceived: ((TrackInfo?) -> Void)?` | Called with track info, or `nil` when no media is playing |
+| `onPlaybackTimeUpdate: ((TimeInterval) -> Void)?` | Elapsed time updates (polling-based, use sparingly) |
+| `onDecodingError: ((Error, Data) -> Void)?` | JSON decode errors |
+| `onListenerTerminated: (() -> Void)?` | Listener process terminated |
 
-For example, you can use `osascript` from the command line to tell an app to play, which brings it to the forefront of media control:
-```sh
-osascript -e 'tell application "Music" to play'
-```
-After this, any calls like `mediaController.pause()` will be directed to Music.
+### Methods
 
-## API Overview
+| Method | Description |
+|--------|-------------|
+| `startListening()` | Start background listener |
+| `stopListening()` | Stop listener |
+| `getTrackInfo(_:)` | One-shot track info fetch |
+| `play()`, `pause()`, `togglePlayPause()` | Playback control |
+| `nextTrack()`, `previousTrack()`, `stop()` | Track navigation |
+| `setTime(seconds:)` | Seek to position |
+| `setShuffleMode(_:)` | Set shuffle (`.off`, `.songs`, `.albums`) |
+| `setRepeatMode(_:)` | Set repeat (`.off`, `.one`, `.all`) |
 
-### `MediaController(bundleIdentifier: String? = nil)`
-Initializes a new controller. If `bundleIdentifier` is provided, the controller will only receive notifications from the application with that ID.
+### TrackInfo.Payload
 
-### `var bundleIdentifier: String?`
-The bundle identifier of the application to filter events from. This can be set after initialization, but will only take effect the next time `startListening()` is called.
-
-### `var onTrackInfoReceived: ((TrackInfo) -> Void)?`
-A closure that is called whenever new track information is available. It provides a decoded `TrackInfo` object, which contains all track metadata and a computed `artwork` property of type `NSImage?`.
-
-### `var onPlaybackTimeUpdate: ((_ elapsedTime: TimeInterval) -> Void)?`
-A closure that provides a continuous stream of the current track's elapsed time in seconds. It fires multiple times per second while a track is playing and provides a final update when it's paused. This is ideal for updating UI elements like a progress bar.
-
-> **Note:** The playback timer is an estimate and not guaranteed to be perfectly accurate. Due to its reliance on frequent polling, this feature can cause high CPU usage and is therefore not recommended for prolonged use in production environments where performance is critical.
-
-### `var onDecodingError: ((Error, Data) -> Void)?`
-An optional closure that is called if the incoming JSON data from the listener process cannot be decoded into a `TrackInfo` object. This can be useful for debugging or handling unexpected data structures.
-
-### `var onListenerTerminated: (() -> Void)?`
-A closure that is called if the background listener process terminates unexpectedly. You may want to restart it here.
-
-### `startListening()`
-Spawns the background Perl process to begin listening for media events.
-
-### `stopListening()`
-Terminates the background listener process.
-
-### Playback Commands
-These functions send an asynchronous command to the background process.
-- `play()`
-- `pause()`
-- `togglePlayPause()`
-- `nextTrack()`
-- `previousTrack()`
-- `stop()`
-- `setTime(seconds: Double)`
+| Property | Type |
+|----------|------|
+| `title`, `artist`, `album`, `applicationName`, `bundleIdentifier` | `String?` |
+| `isPlaying` | `Bool?` |
+| `durationMicros`, `elapsedTimeMicros`, `timestampEpochMicros` | `Double?` |
+| `artwork` | `NSImage?` (computed) |
+| `PID` | `pid_t?` |
+| `shuffleMode` | `ShuffleMode?` |
+| `repeatMode` | `RepeatMode?` |
 
 ## Acknowledgements
 
-This project is a Swift-based implementation heavily inspired by the original Objective-C project, [ungive/mediaremote-adapter](https://github.com/ungive/mediaremote-adapter). The core technique of using a Perl script to bypass framework restrictions was pioneered in that repository.
-
-## License
-
-This project is licensed under the BSD 3-Clause License. See the [LICENSE](LICENSE) file for details.
+This project was originally inspired by [ungive/mediaremote-adapter](https://github.com/ungive/mediaremote-adapter). The core technique of using Perl to access the private framework was pioneered there.
