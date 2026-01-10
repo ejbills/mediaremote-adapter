@@ -194,7 +194,10 @@ public class MediaController {
             guard let newlineData = "\n".data(using: .utf8) else { return }
             while let range = self.dataBuffer.firstRange(of: newlineData) {
                 // Bounds check before accessing subrange
-                guard range.lowerBound <= self.dataBuffer.count else {
+                guard range.lowerBound >= 0,
+                      range.lowerBound <= self.dataBuffer.count,
+                      range.upperBound <= self.dataBuffer.count else {
+                    print("MediaRemoteAdapter: Invalid range detected - range: \(range), buffer size: \(self.dataBuffer.count)")
                     break
                 }
 
