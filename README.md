@@ -72,7 +72,7 @@ mediaController.getTrackInfo { trackInfo in
 }
 ```
 
-### Filtering by Application
+### Filtering by Application (this doesn't work)
 
 ```swift
 let musicController = MediaController(bundleIdentifier: "com.apple.Music")
