@@ -343,6 +343,16 @@ void loop(void) {
                      queue:nil
                 usingBlock:handler];
 
+    // Some players (notably browser media sessions) do not always emit
+    // kMRMediaRemoteNowPlayingInfoDidChangeNotification for play/pause toggles.
+    // Listening to the dedicated isPlaying notification keeps the exported
+    // TrackInfo payload in sync for pause/resume automation logic.
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:(NSString *)kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification
+                    object:nil
+                     queue:nil
+                usingBlock:handler];
+
     CFRunLoopRun();
 }
 
