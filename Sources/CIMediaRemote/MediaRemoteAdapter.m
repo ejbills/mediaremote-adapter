@@ -229,7 +229,8 @@ static void processNowPlayingInfo(NSDictionary *nowPlayingInfo, BOOL isPlaying, 
 static void fetchAndProcess(int pid) {
     MRMediaRemoteGetNowPlayingInfo(_queue, ^(CFDictionaryRef information) {
         if (information == NULL) {
-            return; // No media playing, do nothing.
+            printOut(@"NIL");
+            return;
         }
         NSDictionary *infoDict = [(__bridge NSDictionary *)information copy];
         MRMediaRemoteGetNowPlayingApplicationIsPlaying(_queue, ^(Boolean isPlaying) {
@@ -339,6 +340,12 @@ void loop(void) {
     
     [[NSNotificationCenter defaultCenter]
         addObserverForName:(NSString *)kMRMediaRemoteNowPlayingInfoDidChangeNotification
+                    object:nil
+                     queue:nil
+                usingBlock:handler];
+
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:(NSString *)kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification
                     object:nil
                      queue:nil
                 usingBlock:handler];
