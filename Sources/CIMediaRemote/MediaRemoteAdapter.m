@@ -377,6 +377,54 @@ void stop_command(void) {
     MRMediaRemoteSendCommand(kMRStop, nil);
 }
 
+void toggle_shuffle(void) {
+    MRMediaRemoteSendCommand(kMRToggleShuffle, nil);
+}
+
+void toggle_repeat(void) {
+    MRMediaRemoteSendCommand(kMRToggleRepeat, nil);
+}
+
+void start_forward_seek(void) {
+    MRMediaRemoteSendCommand(kMRStartForwardSeek, nil);
+}
+
+void end_forward_seek(void) {
+    MRMediaRemoteSendCommand(kMREndForwardSeek, nil);
+}
+
+void start_backward_seek(void) {
+    MRMediaRemoteSendCommand(kMRStartBackwardSeek, nil);
+}
+
+void end_backward_seek(void) {
+    MRMediaRemoteSendCommand(kMREndBackwardSeek, nil);
+}
+
+void go_back_fifteen_seconds(void) {
+    MRMediaRemoteSendCommand(kMRGoBackFifteenSeconds, nil);
+}
+
+void skip_fifteen_seconds(void) {
+    MRMediaRemoteSendCommand(kMRSkipFifteenSeconds, nil);
+}
+
+void like_track(void) {
+    MRMediaRemoteSendCommand(kMRLikeTrack, nil);
+}
+
+void ban_track(void) {
+    MRMediaRemoteSendCommand(kMRBanTrack, nil);
+}
+
+void add_to_wish_list(void) {
+    MRMediaRemoteSendCommand(kMRAddTrackToWishList, nil);
+}
+
+void remove_from_wish_list(void) {
+    MRMediaRemoteSendCommand(kMRRemoveTrackFromWishList, nil);
+}
+
 void set_time_from_env(void) {
     const char *timeStr = getenv("MEDIAREMOTE_SET_TIME");
     if (timeStr == NULL) {

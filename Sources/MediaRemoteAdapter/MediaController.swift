@@ -358,6 +358,78 @@ public class MediaController {
         onPlaybackTimeUpdate?(currentElapsedTime)
     }
 
+    public func toggleShuffle() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["toggle_shuffle"])
+        }
+    }
+
+    public func toggleRepeat() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["toggle_repeat"])
+        }
+    }
+
+    public func startForwardSeek() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["start_forward_seek"])
+        }
+    }
+
+    public func endForwardSeek() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["end_forward_seek"])
+        }
+    }
+
+    public func startBackwardSeek() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["start_backward_seek"])
+        }
+    }
+
+    public func endBackwardSeek() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["end_backward_seek"])
+        }
+    }
+
+    public func goBackFifteenSeconds() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["go_back_fifteen_seconds"])
+        }
+    }
+
+    public func skipFifteenSeconds() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["skip_fifteen_seconds"])
+        }
+    }
+
+    public func likeTrack() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["like_track"])
+        }
+    }
+
+    public func banTrack() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["ban_track"])
+        }
+    }
+
+    public func addToWishList() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["add_to_wish_list"])
+        }
+    }
+
+    public func removeFromWishList() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["remove_from_wish_list"])
+        }
+    }
+
     public func setShuffleMode(_ mode: TrackInfo.ShuffleMode) {
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["set_shuffle_mode", String(mode.rawValue)])

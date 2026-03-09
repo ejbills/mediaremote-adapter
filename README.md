@@ -58,6 +58,22 @@ class YourAppController {
     // Shuffle and repeat
     func setShuffle(_ mode: TrackInfo.ShuffleMode) { mediaController.setShuffleMode(mode) }
     func setRepeat(_ mode: TrackInfo.RepeatMode) { mediaController.setRepeatMode(mode) }
+    func toggleShuffle() { mediaController.toggleShuffle() }
+    func toggleRepeat() { mediaController.toggleRepeat() }
+
+    // Seeking
+    func skipFifteenSeconds() { mediaController.skipFifteenSeconds() }
+    func goBackFifteenSeconds() { mediaController.goBackFifteenSeconds() }
+    func startForwardSeek() { mediaController.startForwardSeek() }
+    func endForwardSeek() { mediaController.endForwardSeek() }
+    func startBackwardSeek() { mediaController.startBackwardSeek() }
+    func endBackwardSeek() { mediaController.endBackwardSeek() }
+
+    // Rating
+    func likeTrack() { mediaController.likeTrack() }
+    func banTrack() { mediaController.banTrack() }
+    func addToWishList() { mediaController.addToWishList() }
+    func removeFromWishList() { mediaController.removeFromWishList() }
 }
 ```
 
@@ -102,6 +118,16 @@ let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
 | `setTime(seconds:)` | Seek to position |
 | `setShuffleMode(_:)` | Set shuffle (`.off`, `.songs`, `.albums`) |
 | `setRepeatMode(_:)` | Set repeat (`.off`, `.one`, `.all`) |
+| `toggleShuffle()` | Cycle through shuffle modes |
+| `toggleRepeat()` | Cycle through repeat modes |
+| `skipFifteenSeconds()` | Skip forward 15 seconds |
+| `goBackFifteenSeconds()` | Skip back 15 seconds |
+| `startForwardSeek()`, `endForwardSeek()` | Continuous forward seek (hold/release) |
+| `startBackwardSeek()`, `endBackwardSeek()` | Continuous backward seek (hold/release) |
+| `likeTrack()` | Like the current track |
+| `banTrack()` | Ban/dislike the current track |
+| `addToWishList()` | Add current track to wish list |
+| `removeFromWishList()` | Remove current track from wish list |
 
 ### TrackInfo.Payload
 

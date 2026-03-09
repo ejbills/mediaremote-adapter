@@ -73,6 +73,18 @@ install_xsub("toggle_play_pause", $libref);
 install_xsub("next_track", $libref);
 install_xsub("previous_track", $libref);
 install_xsub("stop_command", $libref);
+install_xsub("toggle_shuffle", $libref);
+install_xsub("toggle_repeat", $libref);
+install_xsub("start_forward_seek", $libref);
+install_xsub("end_forward_seek", $libref);
+install_xsub("start_backward_seek", $libref);
+install_xsub("end_backward_seek", $libref);
+install_xsub("go_back_fifteen_seconds", $libref);
+install_xsub("skip_fifteen_seconds", $libref);
+install_xsub("like_track", $libref);
+install_xsub("ban_track", $libref);
+install_xsub("add_to_wish_list", $libref);
+install_xsub("remove_from_wish_list", $libref);
 install_xsub("set_time_from_env", $libref);
 install_xsub("set_shuffle_mode", $libref);
 install_xsub("set_repeat_mode", $libref);
@@ -96,6 +108,30 @@ if ($command eq 'loop') {
     previous_track();
 } elsif ($command eq 'stop') {
     stop_command();
+} elsif ($command eq 'toggle_shuffle') {
+    toggle_shuffle();
+} elsif ($command eq 'toggle_repeat') {
+    toggle_repeat();
+} elsif ($command eq 'start_forward_seek') {
+    start_forward_seek();
+} elsif ($command eq 'end_forward_seek') {
+    end_forward_seek();
+} elsif ($command eq 'start_backward_seek') {
+    start_backward_seek();
+} elsif ($command eq 'end_backward_seek') {
+    end_backward_seek();
+} elsif ($command eq 'go_back_fifteen_seconds') {
+    go_back_fifteen_seconds();
+} elsif ($command eq 'skip_fifteen_seconds') {
+    skip_fifteen_seconds();
+} elsif ($command eq 'like_track') {
+    like_track();
+} elsif ($command eq 'ban_track') {
+    ban_track();
+} elsif ($command eq 'add_to_wish_list') {
+    add_to_wish_list();
+} elsif ($command eq 'remove_from_wish_list') {
+    remove_from_wish_list();
 } elsif ($command eq 'set_time') {
     my $time = $ARGV[0];
     die "Missing time argument for set_time\n" unless defined $time;
