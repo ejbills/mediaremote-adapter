@@ -76,7 +76,6 @@ public class MediaController {
         }
     }
 
-    /// Returns the track info independently from the actual listen process.
     public func getTrackInfo(_ onReceive: @escaping (TrackInfo?) -> Void) {
         guard let scriptPath = perlScriptPath else {
             onReceive(nil)
@@ -123,7 +122,6 @@ public class MediaController {
 
             if !lineData.isEmpty && !callbackExecuted {
                 callbackExecuted = true
-                // Check for NIL response
                 if lineData == "NIL".data(using: .utf8) {
                     DispatchQueue.main.async { onReceive(nil) }
                     return
@@ -186,26 +184,21 @@ public class MediaController {
 
             let incomingData = fileHandle.availableData
             if incomingData.isEmpty {
-                // This can happen when the process terminates.
                 return
             }
 
             self.dataBuffer.append(incomingData)
 
-            // Process all complete lines in the buffer.
             guard let newlineData = "\n".data(using: .utf8) else { return }
             while let range = self.dataBuffer.firstRange(of: newlineData) {
-                // Bounds check before accessing subrange
                 guard range.lowerBound <= self.dataBuffer.count else {
                     break
                 }
 
                 let lineData = self.dataBuffer.subdata(in: 0..<range.lowerBound)
 
-                // Remove the line and the newline character from the buffer.
                 self.dataBuffer.removeSubrange(0..<range.upperBound)
 
-                // Check for NIL response indicating no media player
                 if lineData == "NIL".data(using: .utf8) {
                     DispatchQueue.main.async {
                         self.onTrackInfoReceived?(nil)
@@ -219,10 +212,10 @@ public class MediaController {
                     do {
                         let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
                         DispatchQueue.main.async {
+                            let isTrackChange = trackInfo.payload.uniqueIdentifier != self.currentTrackIdentifier
+
                             self.lastTrackInfo = trackInfo
                             self.updatePlaybackTimer(with: trackInfo)
-
-                            let isTrackChange = trackInfo.payload.uniqueIdentifier != self.currentTrackIdentifier
 
                             if isTrackChange {
                                 self.trackChangeEmitTimer?.invalidate()
@@ -231,6 +224,7 @@ public class MediaController {
                                     self.onTrackInfoReceived?(latest)
                                 }
                             } else {
+                                self.trackChangeEmitTimer?.invalidate()
                                 self.onTrackInfoReceived?(trackInfo)
                             }
 
@@ -251,7 +245,6 @@ public class MediaController {
             DispatchQueue.main.async {
                 self?.listeningProcess = nil
                 self?.playbackTimer?.invalidate()
-                // Don't call onListenerTerminated if this is a planned restart
                 if self?.eventCount != 0 {
                     self?.onListenerTerminated?()
                 }
@@ -376,19 +369,15 @@ public class MediaController {
     public func setTime(seconds: Double) {
         seekTimer?.invalidate()
 
-        // Optimistically update the UI and our internal timer state.
         onPlaybackTimeUpdate?(seconds)
         self.playbackInfo = (baseTime: seconds, baseTimestamp: Date().timeIntervalSince1970)
 
-        // If we are currently playing, ensure the timer continues to run from the new
-        // optimistic position for a smooth UI experience during scrubbing.
         if isPlaying, playbackTimer == nil || !playbackTimer!.isValid {
             playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 self?.handleTimerTick()
             }
         }
 
-        // Throttle the actual seek command to avoid overwhelming the system.
         seekTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
             DispatchQueue.global(qos: .userInitiated).async {
                 self?.runPerlCommand(arguments: ["set_time", String(seconds)])
@@ -399,7 +388,6 @@ public class MediaController {
     private func updatePlaybackTimer(with trackInfo: TrackInfo) {
         let newTrackIdentifier = trackInfo.payload.uniqueIdentifier
         
-        // When a new track is detected, reset the progress to 0.
         if newTrackIdentifier != self.currentTrackIdentifier {
             self.currentTrackIdentifier = newTrackIdentifier
             onPlaybackTimeUpdate?(0)
@@ -407,7 +395,6 @@ public class MediaController {
 
         playbackTimer?.invalidate()
 
-        // Update our local playing state.
         self.isPlaying = trackInfo.payload.isPlaying ?? false
 
         guard self.isPlaying,
@@ -540,17 +527,11 @@ public class MediaController {
     }
 
     private func restartListeningProcess() {
-        // Stop current process
         listeningProcess?.terminate()
         listeningProcess = nil
-
-        // Clear data buffer to free any accumulated data
         dataBuffer.removeAll()
-
-        // Reset event count
         eventCount = 0
 
-        // Wait a brief moment for cleanup, then restart
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.startListeningInternal()
         }

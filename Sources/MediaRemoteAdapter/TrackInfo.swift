@@ -43,8 +43,6 @@ public struct TrackInfo: Codable {
             return "\(title ?? "")-\(artist ?? "")-\(album ?? "")"
         }
 
-        /// Returns the current elapsed time in seconds, accounting for playback since the last update.
-        /// This computes: elapsedTime + (timeSinceUpdate * playbackRate)
         public var currentElapsedTime: TimeInterval? {
             guard let elapsedMicros = elapsedTimeMicros,
                   let timestampMicros = timestampEpochMicros else {
@@ -119,7 +117,6 @@ public struct TrackInfo: Codable {
             self.artworkMimeType = try container.decodeIfPresent(String.self, forKey: .artworkMimeType)
             self.timestampEpochMicros = try container.decodeIfPresent(Double.self, forKey: .timestampEpochMicros)
 
-            // Handle PID which may come as Int or String
             if let pidNumber = try? container.decodeIfPresent(Int32.self, forKey: .PID) {
                 self.PID = pid_t(pidNumber)
             } else if let pidString = try? container.decodeIfPresent(String.self, forKey: .PID),
