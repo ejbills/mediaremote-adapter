@@ -18,8 +18,7 @@ public class MediaController {
     private var isPlaying = false
     private var lastTrackInfo: TrackInfo?
     private var seekTimer: Timer?
-    private var skipDebounceTimer: Timer?
-    private var pendingSkips = 0
+    private var trackChangeEmitTimer: Timer?
     private var eventCount = 0
     private let restartThreshold = 100
 
@@ -223,21 +222,18 @@ public class MediaController {
                             self.lastTrackInfo = trackInfo
                             self.updatePlaybackTimer(with: trackInfo)
 
-                            if self.pendingSkips > 0 {
-                                let newId = trackInfo.payload.uniqueIdentifier
-                                let oldId = self.currentTrackIdentifier
-                                if newId != oldId {
-                                    self.pendingSkips -= 1
+                            let isTrackChange = trackInfo.payload.uniqueIdentifier != self.currentTrackIdentifier
+
+                            if isTrackChange {
+                                self.trackChangeEmitTimer?.invalidate()
+                                self.trackChangeEmitTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
+                                    guard let self = self, let latest = self.lastTrackInfo else { return }
+                                    self.onTrackInfoReceived?(latest)
                                 }
-                                if self.pendingSkips > 0 {
-                                    if self.eventCount >= self.restartThreshold {
-                                        self.restartListeningProcess()
-                                    }
-                                    return
-                                }
+                            } else {
+                                self.onTrackInfoReceived?(trackInfo)
                             }
 
-                            self.onTrackInfoReceived?(trackInfo)
                             if self.eventCount >= self.restartThreshold {
                                 self.restartListeningProcess()
                             }
@@ -360,8 +356,6 @@ public class MediaController {
     }
 
     private func applyOptimisticSkip() {
-        pendingSkips += 1
-
         onPlaybackTimeUpdate?(0)
         self.playbackInfo = (baseTime: 0, baseTimestamp: Date().timeIntervalSince1970)
         self.isPlaying = true
@@ -369,15 +363,6 @@ public class MediaController {
         if playbackTimer == nil || !playbackTimer!.isValid {
             playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 self?.handleTimerTick()
-            }
-        }
-
-        skipDebounceTimer?.invalidate()
-        skipDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            guard let self = self, self.pendingSkips > 0 else { return }
-            self.pendingSkips = 0
-            if let latest = self.lastTrackInfo {
-                self.onTrackInfoReceived?(latest)
             }
         }
     }
