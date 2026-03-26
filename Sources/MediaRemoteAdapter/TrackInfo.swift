@@ -4,6 +4,10 @@ import Foundation
 public struct TrackInfo: Codable {
     public let payload: Payload
 
+    public init(payload: Payload) {
+        self.payload = payload
+    }
+
     public enum ShuffleMode: Int, Codable {
         case off = 0
         case songs = 1
@@ -33,14 +37,7 @@ public struct TrackInfo: Codable {
         public let repeatMode: RepeatMode?
         public let playbackRate: Double?
 
-        public var artwork: NSImage? {
-            guard let base64String = artworkDataBase64,
-                  let data = Data(base64Encoded: base64String)
-            else {
-                return nil
-            }
-            return NSImage(data: data)
-        }
+        public let artwork: NSImage?
 
         public var uniqueIdentifier: String {
             return "\(title ?? "")-\(artist ?? "")-\(album ?? "")"
@@ -66,6 +63,42 @@ public struct TrackInfo: Codable {
 
         enum CodingKeys: String, CodingKey {
             case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros, PID, shuffleMode, repeatMode, playbackRate
+        }
+
+        public init(
+            title: String? = nil,
+            artist: String? = nil,
+            album: String? = nil,
+            isPlaying: Bool? = nil,
+            durationMicros: Double? = nil,
+            elapsedTimeMicros: Double? = nil,
+            applicationName: String? = nil,
+            bundleIdentifier: String? = nil,
+            artworkDataBase64: String? = nil,
+            artworkMimeType: String? = nil,
+            timestampEpochMicros: Double? = nil,
+            PID: pid_t? = nil,
+            shuffleMode: ShuffleMode? = nil,
+            repeatMode: RepeatMode? = nil,
+            playbackRate: Double? = nil,
+            artwork: NSImage? = nil
+        ) {
+            self.title = title
+            self.artist = artist
+            self.album = album
+            self.isPlaying = isPlaying
+            self.durationMicros = durationMicros
+            self.elapsedTimeMicros = elapsedTimeMicros
+            self.applicationName = applicationName
+            self.bundleIdentifier = bundleIdentifier
+            self.artworkDataBase64 = artworkDataBase64
+            self.artworkMimeType = artworkMimeType
+            self.timestampEpochMicros = timestampEpochMicros
+            self.PID = PID
+            self.shuffleMode = shuffleMode
+            self.repeatMode = repeatMode
+            self.playbackRate = playbackRate
+            self.artwork = artwork
         }
 
         public init(from decoder: Decoder) throws {
@@ -101,6 +134,13 @@ public struct TrackInfo: Codable {
                 self.isPlaying = (intValue == 1)
             } else {
                 self.isPlaying = nil
+            }
+
+            if let base64String = self.artworkDataBase64,
+               let data = Data(base64Encoded: base64String) {
+                self.artwork = NSImage(data: data)
+            } else {
+                self.artwork = nil
             }
         }
     }

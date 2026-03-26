@@ -16,6 +16,7 @@ public class MediaController {
     private var playbackInfo: (baseTime: TimeInterval, baseTimestamp: TimeInterval)?
     private var currentTrackIdentifier: String?
     private var isPlaying = false
+    private var lastTrackInfo: TrackInfo?
     private var seekTimer: Timer?
     private var eventCount = 0
     private let restartThreshold = 100
@@ -217,12 +218,11 @@ public class MediaController {
                     do {
                         let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
                         DispatchQueue.main.async {
-                            // Check if we need to restart after processing
+                            self.lastTrackInfo = trackInfo
+                            self.onTrackInfoReceived?(trackInfo)
+                            self.updatePlaybackTimer(with: trackInfo)
                             if self.eventCount >= self.restartThreshold {
                                 self.restartListeningProcess()
-                            } else {
-                                self.onTrackInfoReceived?(trackInfo)
-                                self.updatePlaybackTimer(with: trackInfo)
                             }
                         }
                     } catch {
@@ -260,32 +260,97 @@ public class MediaController {
     }
 
     public func play() {
+        applyOptimisticPlayState(playing: true)
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["play"])
         }
     }
 
     public func pause() {
+        applyOptimisticPlayState(playing: false)
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["pause"])
         }
     }
 
     public func togglePlayPause() {
+        applyOptimisticPlayState(playing: !isPlaying)
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["toggle_play_pause"])
         }
     }
 
     public func nextTrack() {
+        applyOptimisticSkip()
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["next_track"])
         }
     }
 
     public func previousTrack() {
+        applyOptimisticSkip()
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["previous_track"])
+        }
+    }
+
+    private func applyOptimisticPlayState(playing: Bool) {
+        guard let last = lastTrackInfo else { return }
+
+        let now = Date().timeIntervalSince1970
+        let currentPosition: Double
+        if let info = playbackInfo {
+            currentPosition = info.baseTime + (now - info.baseTimestamp)
+        } else {
+            currentPosition = (last.payload.elapsedTimeMicros ?? 0) / 1_000_000
+        }
+
+        if playing {
+            self.playbackInfo = (baseTime: currentPosition, baseTimestamp: now)
+            if playbackTimer == nil || !playbackTimer!.isValid {
+                playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                    self?.handleTimerTick()
+                }
+            }
+        } else {
+            playbackTimer?.invalidate()
+            onPlaybackTimeUpdate?(currentPosition)
+        }
+
+        self.isPlaying = playing
+        let nowMicros = now * 1_000_000
+        let syntheticPayload = TrackInfo.Payload(
+            title: last.payload.title,
+            artist: last.payload.artist,
+            album: last.payload.album,
+            isPlaying: playing,
+            durationMicros: last.payload.durationMicros,
+            elapsedTimeMicros: currentPosition * 1_000_000,
+            applicationName: last.payload.applicationName,
+            bundleIdentifier: last.payload.bundleIdentifier,
+            artworkDataBase64: last.payload.artworkDataBase64,
+            artworkMimeType: last.payload.artworkMimeType,
+            timestampEpochMicros: nowMicros,
+            PID: last.payload.PID,
+            shuffleMode: last.payload.shuffleMode,
+            repeatMode: last.payload.repeatMode,
+            playbackRate: playing ? 1.0 : 0.0,
+            artwork: last.payload.artwork
+        )
+        let syntheticTrackInfo = TrackInfo(payload: syntheticPayload)
+        self.lastTrackInfo = syntheticTrackInfo
+        onTrackInfoReceived?(syntheticTrackInfo)
+    }
+
+    private func applyOptimisticSkip() {
+        onPlaybackTimeUpdate?(0)
+        self.playbackInfo = (baseTime: 0, baseTimestamp: Date().timeIntervalSince1970)
+        self.isPlaying = true
+
+        if playbackTimer == nil || !playbackTimer!.isValid {
+            playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                self?.handleTimerTick()
+            }
         }
     }
     
@@ -342,8 +407,20 @@ public class MediaController {
             return
         }
 
-        self.playbackInfo = (baseTime: baseTime / 1_000_000,
-                               baseTimestamp: baseTimestamp / 1_000_000)
+        let incomingBaseTime = baseTime / 1_000_000
+        let incomingBaseTimestamp = baseTimestamp / 1_000_000
+
+        if let existing = self.playbackInfo {
+            let now = Date().timeIntervalSince1970
+            let interpolated = existing.baseTime + (now - existing.baseTimestamp)
+            if abs(interpolated - incomingBaseTime) < 1.0 {
+                self.playbackInfo = (baseTime: interpolated, baseTimestamp: now)
+            } else {
+                self.playbackInfo = (baseTime: incomingBaseTime, baseTimestamp: incomingBaseTimestamp)
+            }
+        } else {
+            self.playbackInfo = (baseTime: incomingBaseTime, baseTimestamp: incomingBaseTimestamp)
+        }
 
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             self?.handleTimerTick()

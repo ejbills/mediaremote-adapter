@@ -138,7 +138,7 @@ let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
 | `durationMicros`, `elapsedTimeMicros`, `timestampEpochMicros` | `Double?` | |
 | `playbackRate` | `Double?` | 1.0 = playing, 0.0 = paused |
 | `currentElapsedTime` | `TimeInterval?` | **Computed** - real-time position in seconds |
-| `artwork` | `NSImage?` | Computed from base64 data |
+| `artwork` | `NSImage?` | Decoded once from base64 data at init |
 | `PID` | `pid_t?` | |
 | `shuffleMode` | `ShuffleMode?` | |
 | `repeatMode` | `RepeatMode?` | |
