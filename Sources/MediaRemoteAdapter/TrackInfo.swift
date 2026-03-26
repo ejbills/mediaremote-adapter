@@ -52,6 +52,11 @@ public struct TrackInfo: Codable {
             }
 
             let elapsedSeconds = elapsedMicros / 1_000_000
+
+            if isPlaying != true {
+                return elapsedSeconds
+            }
+
             let timestampSeconds = timestampMicros / 1_000_000
             let rate = playbackRate ?? 0.0
 

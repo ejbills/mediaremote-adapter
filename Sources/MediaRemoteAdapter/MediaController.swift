@@ -414,8 +414,15 @@ public class MediaController {
               let baseTime = trackInfo.payload.elapsedTimeMicros,
               let baseTimestamp = trackInfo.payload.timestampEpochMicros
         else {
-            if let lastKnownTime = trackInfo.payload.elapsedTimeMicros {
-                onPlaybackTimeUpdate?(lastKnownTime / 1_000_000)
+            if let existing = self.playbackInfo {
+                let now = Date().timeIntervalSince1970
+                let frozenPosition = existing.baseTime + (now - existing.baseTimestamp)
+                self.playbackInfo = (baseTime: frozenPosition, baseTimestamp: now)
+                onPlaybackTimeUpdate?(frozenPosition)
+            } else if let lastKnownTime = trackInfo.payload.elapsedTimeMicros {
+                let position = lastKnownTime / 1_000_000
+                self.playbackInfo = (baseTime: position, baseTimestamp: Date().timeIntervalSince1970)
+                onPlaybackTimeUpdate?(position)
             }
             return
         }
