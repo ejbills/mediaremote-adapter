@@ -18,6 +18,8 @@ public class MediaController {
     private var isPlaying = false
     private var lastTrackInfo: TrackInfo?
     private var seekTimer: Timer?
+    private var skipDebounceTimer: Timer?
+    private var pendingSkips = 0
     private var eventCount = 0
     private let restartThreshold = 100
 
@@ -219,8 +221,23 @@ public class MediaController {
                         let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
                         DispatchQueue.main.async {
                             self.lastTrackInfo = trackInfo
-                            self.onTrackInfoReceived?(trackInfo)
                             self.updatePlaybackTimer(with: trackInfo)
+
+                            if self.pendingSkips > 0 {
+                                let newId = trackInfo.payload.uniqueIdentifier
+                                let oldId = self.currentTrackIdentifier
+                                if newId != oldId {
+                                    self.pendingSkips -= 1
+                                }
+                                if self.pendingSkips > 0 {
+                                    if self.eventCount >= self.restartThreshold {
+                                        self.restartListeningProcess()
+                                    }
+                                    return
+                                }
+                            }
+
+                            self.onTrackInfoReceived?(trackInfo)
                             if self.eventCount >= self.restartThreshold {
                                 self.restartListeningProcess()
                             }
@@ -343,6 +360,8 @@ public class MediaController {
     }
 
     private func applyOptimisticSkip() {
+        pendingSkips += 1
+
         onPlaybackTimeUpdate?(0)
         self.playbackInfo = (baseTime: 0, baseTimestamp: Date().timeIntervalSince1970)
         self.isPlaying = true
@@ -350,6 +369,15 @@ public class MediaController {
         if playbackTimer == nil || !playbackTimer!.isValid {
             playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 self?.handleTimerTick()
+            }
+        }
+
+        skipDebounceTimer?.invalidate()
+        skipDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            guard let self = self, self.pendingSkips > 0 else { return }
+            self.pendingSkips = 0
+            if let latest = self.lastTrackInfo {
+                self.onTrackInfoReceived?(latest)
             }
         }
     }
