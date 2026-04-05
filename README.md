@@ -93,13 +93,6 @@ mediaController.getTrackInfo { trackInfo in
 }
 ```
 
-### Filtering by Application (this doesn't work)
-
-```swift
-let musicController = MediaController(bundleIdentifier: "com.apple.Music")
-let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
-```
-
 ## API
 
 ### Callbacks

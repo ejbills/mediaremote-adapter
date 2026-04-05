@@ -20,7 +20,6 @@
 static CFRunLoopRef _runLoop = NULL;
 static dispatch_queue_t _queue;
 static dispatch_block_t _debounce_block = NULL;
-static NSString *_targetBundleIdentifier = NULL;
 static pid_t _parentPID = 0;
 static dispatch_source_t _parentMonitorTimer = NULL;
 
@@ -178,11 +177,6 @@ static void processNowPlayingInfo(NSDictionary *nowPlayingInfo, BOOL isPlaying, 
     id title = nowPlayingInfo[(NSString *)kMRMediaRemoteNowPlayingInfoTitle];
     if (title == nil || title == [NSNull null] || ([title isKindOfClass:[NSString class]] && [(NSString *)title length] == 0)) return;
 
-    // If a target bundle ID is set, filter out notifications from other apps.
-    if (_targetBundleIdentifier && application && ![application.bundleIdentifier isEqual:_targetBundleIdentifier]) {
-        return;
-    }
-
     NSMutableDictionary *data = convertNowPlayingInformation(nowPlayingInfo);
     [data setObject:@(isPlaying) forKey:(NSString *)kIsPlaying];
     if (application) {
@@ -265,13 +259,6 @@ static void setupParentMonitoring(void) {
 // C function implementations to be called from Perl
 void bootstrap(void) {
     _queue = dispatch_queue_create("mediaremote-adapter", DISPATCH_QUEUE_SERIAL);
-
-    // Read the target bundle identifier from the environment variable.
-    // This is set by the Perl script based on the `--id` command-line argument.
-    const char *bundleIdEnv = getenv("MEDIAREMOTEADAPTER_bundle_identifier");
-    if (bundleIdEnv != NULL) {
-        _targetBundleIdentifier = [NSString stringWithUTF8String:bundleIdEnv];
-    }
 
     // Set up parent process monitoring
     setupParentMonitoring();

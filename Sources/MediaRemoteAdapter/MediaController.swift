@@ -19,11 +19,8 @@ public class MediaController {
     public var onTrackInfoReceived: ((TrackInfo?) -> Void)?
     public var onListenerTerminated: (() -> Void)?
     public var onDecodingError: ((Error, Data) -> Void)?
-    public var bundleIdentifier: String?
 
-    public init(bundleIdentifier: String? = nil) {
-        self.bundleIdentifier = bundleIdentifier
-    }
+    public init() {}
 
     private var libraryPath: String? {
         let bundle = Bundle(for: MediaController.self)
@@ -53,18 +50,43 @@ public class MediaController {
         let errorPipe = Pipe()
         process.standardError = errorPipe
 
+        var outputBuffer = Data()
+        var errorBuffer = Data()
+        let lock = NSLock()
+
+        outputPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            lock.lock()
+            outputBuffer.append(data)
+            lock.unlock()
+        }
+
+        errorPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            lock.lock()
+            errorBuffer.append(data)
+            lock.unlock()
+        }
+
         do {
             try process.run()
             process.waitUntilExit()
 
-            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            outputPipe.fileHandleForReading.readabilityHandler = nil
+            errorPipe.fileHandleForReading.readabilityHandler = nil
 
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorOutput = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            lock.lock()
+            outputBuffer.append(outputPipe.fileHandleForReading.readDataToEndOfFile())
+            errorBuffer.append(errorPipe.fileHandleForReading.readDataToEndOfFile())
+            lock.unlock()
+
+            let output = String(data: outputBuffer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let errorOutput = String(data: errorBuffer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
             return (output, errorOutput, process.terminationStatus)
         } catch {
+            outputPipe.fileHandleForReading.readabilityHandler = nil
+            errorPipe.fileHandleForReading.readabilityHandler = nil
             return (nil, error.localizedDescription, -1)
         }
     }
@@ -85,13 +107,7 @@ public class MediaController {
         var getDataBuffer = Data()
         var callbackExecuted = false
 
-        var arguments = [scriptPath]
-        if let bundleId = bundleIdentifier {
-            arguments.append("--id")
-            arguments.append(bundleId)
-        }
-        arguments.append(contentsOf: [libraryPath, "get"])
-        getProcess.arguments = arguments
+        getProcess.arguments = [scriptPath, libraryPath, "get"]
 
         let outputPipe = Pipe()
         getProcess.standardOutput = outputPipe
@@ -161,13 +177,7 @@ public class MediaController {
         listeningProcess = Process()
         listeningProcess?.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
 
-        var arguments = [scriptPath]
-        if let bundleId = bundleIdentifier {
-            arguments.append("--id")
-            arguments.append(bundleId)
-        }
-        arguments.append(contentsOf: [libraryPath, "loop"])
-        listeningProcess?.arguments = arguments
+        listeningProcess?.arguments = [scriptPath, libraryPath, "loop"]
 
         let outputPipe = Pipe()
         listeningProcess?.standardOutput = outputPipe

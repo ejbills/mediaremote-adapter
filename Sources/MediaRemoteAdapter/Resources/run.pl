@@ -5,7 +5,6 @@
 
 use strict;
 use warnings;
-use Getopt::Long;
 use DynaLoader;
 
 # --- Autoflush STDOUT ---
@@ -13,22 +12,12 @@ use DynaLoader;
 # that data is sent to the parent Swift process immediately.
 $| = 1;
 
-# --- Command-Line Argument Parsing ---
-my $bundle_identifier;
-GetOptions('id=s' => \$bundle_identifier);
-
-# If a bundle ID is provided, set it as an environment variable.
-# This allows the Objective-C code to see the filter.
-if (defined $bundle_identifier) {
-    $ENV{'MEDIAREMOTEADAPTER_bundle_identifier'} = $bundle_identifier;
-}
-
 # --- Script Setup ---
 # This script dynamically loads the MediaRemoteAdapter dylib and executes
 # a command. It's designed to be called by a parent process that provides
 # the full path to the dylib.
 
-my $usage = "Usage: $0 [--id <bundle_id>] <path_to_dylib> <loop|play|pause|...>";
+my $usage = "Usage: $0 <path_to_dylib> <loop|play|pause|...>";
 die $usage unless @ARGV >= 2;
 
 my $dylib_path = shift @ARGV;
