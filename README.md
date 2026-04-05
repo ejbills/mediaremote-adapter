@@ -34,6 +34,11 @@ class YourAppController {
                 return
             }
             print("Now Playing: \(trackInfo.payload.title ?? "N/A")")
+
+            // Get real-time playback position on demand
+            if let position = trackInfo.payload.currentElapsedTime {
+                print("Position: \(position)s")
+            }
         }
 
         // Handle listener termination
@@ -102,7 +107,6 @@ let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
 | Callback | Description |
 |----------|-------------|
 | `onTrackInfoReceived: ((TrackInfo?) -> Void)?` | Called with track info, or `nil` when no media is playing |
-| `onPlaybackTimeUpdate: ((TimeInterval) -> Void)?` | Elapsed time updates (polling-based, use sparingly) |
 | `onDecodingError: ((Error, Data) -> Void)?` | JSON decode errors |
 | `onListenerTerminated: (() -> Void)?` | Listener process terminated |
 
@@ -143,7 +147,7 @@ let spotifyController = MediaController(bundleIdentifier: "com.spotify.client")
 | `shuffleMode` | `ShuffleMode?` | |
 | `repeatMode` | `RepeatMode?` | |
 
-> **Note:** `elapsedTimeMicros` is stale (captured at last state change). Use `currentElapsedTime` for accurate position.
+> **Playback position:** `elapsedTimeMicros` is a snapshot from the last state change. Use `currentElapsedTime` to compute an accurate position on demand -- it interpolates from the snapshot using `timestampEpochMicros` and `playbackRate`.
 
 ## Acknowledgements
 

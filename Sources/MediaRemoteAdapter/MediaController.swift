@@ -12,20 +12,13 @@ public class MediaController {
 
     private var listeningProcess: Process?
     private var dataBuffer = Data()
-    private var playbackTimer: Timer?
-    private var playbackInfo: (baseTime: TimeInterval, baseTimestamp: TimeInterval)?
-    private var currentTrackIdentifier: String?
-    private var isPlaying = false
     private var lastTrackInfo: TrackInfo?
-    private var seekTimer: Timer?
-    private var trackChangeEmitTimer: Timer?
     private var eventCount = 0
     private let restartThreshold = 100
 
     public var onTrackInfoReceived: ((TrackInfo?) -> Void)?
     public var onListenerTerminated: (() -> Void)?
     public var onDecodingError: ((Error, Data) -> Void)?
-    public var onPlaybackTimeUpdate: ((_ elapsedTime: TimeInterval) -> Void)?
     public var bundleIdentifier: String?
 
     public init(bundleIdentifier: String? = nil) {
@@ -212,21 +205,8 @@ public class MediaController {
                     do {
                         let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
                         DispatchQueue.main.async {
-                            let isTrackChange = trackInfo.payload.uniqueIdentifier != self.currentTrackIdentifier
-
                             self.lastTrackInfo = trackInfo
-                            self.updatePlaybackTimer(with: trackInfo)
-
-                            if isTrackChange {
-                                self.trackChangeEmitTimer?.invalidate()
-                                self.trackChangeEmitTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
-                                    guard let self = self, let latest = self.lastTrackInfo else { return }
-                                    self.onTrackInfoReceived?(latest)
-                                }
-                            } else {
-                                self.trackChangeEmitTimer?.invalidate()
-                                self.onTrackInfoReceived?(trackInfo)
-                            }
+                            self.onTrackInfoReceived?(trackInfo)
 
                             if self.eventCount >= self.restartThreshold {
                                 self.restartListeningProcess()
@@ -244,7 +224,6 @@ public class MediaController {
         listeningProcess?.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
                 self?.listeningProcess = nil
-                self?.playbackTimer?.invalidate()
                 if self?.eventCount != 0 {
                     self?.onListenerTerminated?()
                 }
@@ -261,105 +240,39 @@ public class MediaController {
 
     public func stopListening() {
         listeningProcess?.terminate()
-        playbackTimer?.invalidate()
         listeningProcess = nil
     }
 
     public func play() {
-        applyOptimisticPlayState(playing: true)
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["play"])
         }
     }
 
     public func pause() {
-        applyOptimisticPlayState(playing: false)
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["pause"])
         }
     }
 
     public func togglePlayPause() {
-        applyOptimisticPlayState(playing: !isPlaying)
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["toggle_play_pause"])
         }
     }
 
     public func nextTrack() {
-        applyOptimisticSkip()
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["next_track"])
         }
     }
 
     public func previousTrack() {
-        applyOptimisticSkip()
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["previous_track"])
         }
     }
 
-    private func applyOptimisticPlayState(playing: Bool) {
-        guard let last = lastTrackInfo else { return }
-
-        let now = Date().timeIntervalSince1970
-        let currentPosition: Double
-        if let info = playbackInfo {
-            currentPosition = info.baseTime + (now - info.baseTimestamp)
-        } else {
-            currentPosition = (last.payload.elapsedTimeMicros ?? 0) / 1_000_000
-        }
-
-        if playing {
-            self.playbackInfo = (baseTime: currentPosition, baseTimestamp: now)
-            if playbackTimer == nil || !playbackTimer!.isValid {
-                playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                    self?.handleTimerTick()
-                }
-            }
-        } else {
-            playbackTimer?.invalidate()
-            onPlaybackTimeUpdate?(currentPosition)
-        }
-
-        self.isPlaying = playing
-        let nowMicros = now * 1_000_000
-        let syntheticPayload = TrackInfo.Payload(
-            title: last.payload.title,
-            artist: last.payload.artist,
-            album: last.payload.album,
-            isPlaying: playing,
-            durationMicros: last.payload.durationMicros,
-            elapsedTimeMicros: currentPosition * 1_000_000,
-            applicationName: last.payload.applicationName,
-            bundleIdentifier: last.payload.bundleIdentifier,
-            artworkDataBase64: last.payload.artworkDataBase64,
-            artworkMimeType: last.payload.artworkMimeType,
-            timestampEpochMicros: nowMicros,
-            PID: last.payload.PID,
-            shuffleMode: last.payload.shuffleMode,
-            repeatMode: last.payload.repeatMode,
-            playbackRate: playing ? 1.0 : 0.0,
-            artwork: last.payload.artwork
-        )
-        let syntheticTrackInfo = TrackInfo(payload: syntheticPayload)
-        self.lastTrackInfo = syntheticTrackInfo
-        onTrackInfoReceived?(syntheticTrackInfo)
-    }
-
-    private func applyOptimisticSkip() {
-        onPlaybackTimeUpdate?(0)
-        self.playbackInfo = (baseTime: 0, baseTimestamp: Date().timeIntervalSince1970)
-        self.isPlaying = true
-
-        if playbackTimer == nil || !playbackTimer!.isValid {
-            playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                self?.handleTimerTick()
-            }
-        }
-    }
-    
     public func stop() {
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["stop"])
@@ -367,79 +280,9 @@ public class MediaController {
     }
 
     public func setTime(seconds: Double) {
-        seekTimer?.invalidate()
-
-        onPlaybackTimeUpdate?(seconds)
-        self.playbackInfo = (baseTime: seconds, baseTimestamp: Date().timeIntervalSince1970)
-
-        if isPlaying, playbackTimer == nil || !playbackTimer!.isValid {
-            playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                self?.handleTimerTick()
-            }
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.runPerlCommand(arguments: ["set_time", String(seconds)])
         }
-
-        seekTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
-            DispatchQueue.global(qos: .userInitiated).async {
-                self?.runPerlCommand(arguments: ["set_time", String(seconds)])
-            }
-        }
-    }
-    
-    private func updatePlaybackTimer(with trackInfo: TrackInfo) {
-        let newTrackIdentifier = trackInfo.payload.uniqueIdentifier
-        
-        if newTrackIdentifier != self.currentTrackIdentifier {
-            self.currentTrackIdentifier = newTrackIdentifier
-            onPlaybackTimeUpdate?(0)
-        }
-
-        playbackTimer?.invalidate()
-
-        self.isPlaying = trackInfo.payload.isPlaying ?? false
-
-        guard self.isPlaying,
-              let baseTime = trackInfo.payload.elapsedTimeMicros,
-              let baseTimestamp = trackInfo.payload.timestampEpochMicros
-        else {
-            if let existing = self.playbackInfo {
-                let now = Date().timeIntervalSince1970
-                let frozenPosition = existing.baseTime + (now - existing.baseTimestamp)
-                self.playbackInfo = (baseTime: frozenPosition, baseTimestamp: now)
-                onPlaybackTimeUpdate?(frozenPosition)
-            } else if let lastKnownTime = trackInfo.payload.elapsedTimeMicros {
-                let position = lastKnownTime / 1_000_000
-                self.playbackInfo = (baseTime: position, baseTimestamp: Date().timeIntervalSince1970)
-                onPlaybackTimeUpdate?(position)
-            }
-            return
-        }
-
-        let incomingBaseTime = baseTime / 1_000_000
-        let incomingBaseTimestamp = baseTimestamp / 1_000_000
-
-        if let existing = self.playbackInfo {
-            let now = Date().timeIntervalSince1970
-            let interpolated = existing.baseTime + (now - existing.baseTimestamp)
-            if abs(interpolated - incomingBaseTime) < 1.0 {
-                self.playbackInfo = (baseTime: interpolated, baseTimestamp: now)
-            } else {
-                self.playbackInfo = (baseTime: incomingBaseTime, baseTimestamp: incomingBaseTimestamp)
-            }
-        } else {
-            self.playbackInfo = (baseTime: incomingBaseTime, baseTimestamp: incomingBaseTimestamp)
-        }
-
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.handleTimerTick()
-        }
-    }
-
-    @objc private func handleTimerTick() {
-        guard let info = playbackInfo else { return }
-        let now = Date().timeIntervalSince1970
-        let timePassed = now - info.baseTimestamp
-        let currentElapsedTime = info.baseTime + timePassed
-        onPlaybackTimeUpdate?(currentElapsedTime)
     }
 
     public func toggleShuffle() {
@@ -536,4 +379,4 @@ public class MediaController {
             self?.startListeningInternal()
         }
     }
-} 
+}

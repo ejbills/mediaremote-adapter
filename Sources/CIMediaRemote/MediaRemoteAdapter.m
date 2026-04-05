@@ -24,11 +24,6 @@ static NSString *_targetBundleIdentifier = NULL;
 static pid_t _parentPID = 0;
 static dispatch_source_t _parentMonitorTimer = NULL;
 
-// These keys identify a now playing item uniquely.
-static NSArray<NSString *> *identifyingItemKeys(void) {
-    return @[ (NSString *)kTitle, (NSString *)kArtist, (NSString *)kAlbum ];
-}
-
 static void printOut(NSString *message) {
     fprintf(stdout, "%s\n", [message UTF8String]);
     fflush(stdout);
@@ -156,32 +151,7 @@ convertNowPlayingInformation(NSDictionary *information) {
     return data;
 }
 
-static NSDictionary *createDiff(NSDictionary *a, NSDictionary *b) {
-    NSMutableDictionary *diff = [NSMutableDictionary dictionary];
-    NSMutableSet *allKeys = [NSMutableSet setWithArray:a.allKeys];
-    [allKeys addObjectsFromArray:b.allKeys];
-    for (id key in allKeys) {
-        id oldValue = a[key];
-        id newValue = b[key];
-        if (![oldValue isEqual:newValue]) {
-            diff[key] = newValue ?: [NSNull null];
-        }
-    }
-    return [diff copy];
-}
-
-static bool isSameItemIdentity(NSDictionary *a, NSDictionary *b) {
-    for (NSString *key in identifyingItemKeys()) {
-        id aValue = a[key];
-        id bValue = b[key];
-        if (aValue == nil || bValue == nil || ![aValue isEqual:bValue]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Always sends the full data payload. No more diffing.
+// Always sends the full data payload.
 static void printData(NSDictionary *data) {
     NSString *serialized = serializeData(data, false);
     if (serialized != nil) {
