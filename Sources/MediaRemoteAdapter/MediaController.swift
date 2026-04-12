@@ -115,6 +115,7 @@ public class MediaController {
         outputPipe.fileHandleForReading.readabilityHandler = { fileHandle in
             let incomingData = fileHandle.availableData
             if incomingData.isEmpty {
+                fileHandle.readabilityHandler = nil
                 return
             }
 
@@ -187,6 +188,7 @@ public class MediaController {
 
             let incomingData = fileHandle.availableData
             if incomingData.isEmpty {
+                fileHandle.readabilityHandler = nil
                 return
             }
 
@@ -249,6 +251,7 @@ public class MediaController {
     }
 
     public func stopListening() {
+        (listeningProcess?.standardOutput as? Pipe)?.fileHandleForReading.readabilityHandler = nil
         listeningProcess?.terminate()
         listeningProcess = nil
     }
@@ -380,6 +383,7 @@ public class MediaController {
     }
 
     private func restartListeningProcess() {
+        (listeningProcess?.standardOutput as? Pipe)?.fileHandleForReading.readabilityHandler = nil
         listeningProcess?.terminate()
         listeningProcess = nil
         dataBuffer.removeAll()
