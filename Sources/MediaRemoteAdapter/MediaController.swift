@@ -215,8 +215,9 @@ public class MediaController {
                     do {
                         let trackInfo = try JSONDecoder().decode(TrackInfo.self, from: lineData)
                         DispatchQueue.main.async {
-                            self.lastTrackInfo = trackInfo
-                            self.onTrackInfoReceived?(trackInfo)
+                            let emitted = self.preservingArtworkIfDowngrade(trackInfo)
+                            self.lastTrackInfo = emitted
+                            self.onTrackInfoReceived?(emitted)
 
                             if self.eventCount >= self.restartThreshold {
                                 self.restartListeningProcess()
@@ -377,6 +378,47 @@ public class MediaController {
         DispatchQueue.global(qos: .userInitiated).async {
             self.runPerlCommand(arguments: ["set_repeat_mode", String(mode.rawValue)])
         }
+    }
+
+    private func isSameTrack(_ a: TrackInfo.Payload, _ b: TrackInfo.Payload) -> Bool {
+        guard a.title == b.title, a.artist == b.artist else { return false }
+        let aAlbum = a.album ?? ""
+        let bAlbum = b.album ?? ""
+        return aAlbum == bAlbum || aAlbum.isEmpty || bAlbum.isEmpty
+    }
+
+    private func preservingArtworkIfDowngrade(_ incoming: TrackInfo) -> TrackInfo {
+        guard let previous = lastTrackInfo,
+              isSameTrack(previous.payload, incoming.payload) else {
+            return incoming
+        }
+
+        let previousLen = previous.payload.artworkDataBase64?.count ?? 0
+        let incomingLen = incoming.payload.artworkDataBase64?.count ?? 0
+        guard incomingLen < previousLen else {
+            return incoming
+        }
+
+        let p = incoming.payload
+        let merged = TrackInfo.Payload(
+            title: p.title,
+            artist: p.artist,
+            album: p.album,
+            isPlaying: p.isPlaying,
+            durationMicros: p.durationMicros,
+            elapsedTimeMicros: p.elapsedTimeMicros,
+            applicationName: p.applicationName,
+            bundleIdentifier: p.bundleIdentifier,
+            artworkDataBase64: previous.payload.artworkDataBase64,
+            artworkMimeType: previous.payload.artworkMimeType,
+            timestampEpochMicros: p.timestampEpochMicros,
+            PID: p.PID,
+            shuffleMode: p.shuffleMode,
+            repeatMode: p.repeatMode,
+            playbackRate: p.playbackRate,
+            artwork: previous.payload.artwork
+        )
+        return TrackInfo(payload: merged)
     }
 
     private func restartListeningProcess() {
