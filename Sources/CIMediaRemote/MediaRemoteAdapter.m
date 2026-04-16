@@ -2,6 +2,7 @@
 // This file is licensed under the BSD 3-Clause License.
 
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -22,6 +23,8 @@ static dispatch_queue_t _queue;
 static dispatch_block_t _debounce_block = NULL;
 static pid_t _parentPID = 0;
 static dispatch_source_t _parentMonitorTimer = NULL;
+static dispatch_source_t _stdinSource = NULL;
+static NSMutableData *_stdinBuffer = nil;
 
 static void printOut(NSString *message) {
     fprintf(stdout, "%s\n", [message UTF8String]);
@@ -264,8 +267,117 @@ void bootstrap(void) {
     setupParentMonitoring();
 }
 
+static void executeInlineCommand(NSString *line) {
+    NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) return;
+
+    NSArray<NSString *> *parts = [trimmed componentsSeparatedByString:@" "];
+    NSString *cmd = parts[0];
+
+    if ([cmd isEqualToString:@"play"]) {
+        MRMediaRemoteSendCommand(kMRPlay, nil);
+    } else if ([cmd isEqualToString:@"pause"]) {
+        MRMediaRemoteSendCommand(kMRPause, nil);
+    } else if ([cmd isEqualToString:@"toggle_play_pause"]) {
+        MRMediaRemoteSendCommand(kMRTogglePlayPause, nil);
+    } else if ([cmd isEqualToString:@"next_track"]) {
+        MRMediaRemoteSendCommand(kMRNextTrack, nil);
+    } else if ([cmd isEqualToString:@"previous_track"]) {
+        MRMediaRemoteSendCommand(kMRPreviousTrack, nil);
+    } else if ([cmd isEqualToString:@"stop"]) {
+        MRMediaRemoteSendCommand(kMRStop, nil);
+    } else if ([cmd isEqualToString:@"toggle_shuffle"]) {
+        MRMediaRemoteSendCommand(kMRToggleShuffle, nil);
+    } else if ([cmd isEqualToString:@"toggle_repeat"]) {
+        MRMediaRemoteSendCommand(kMRToggleRepeat, nil);
+    } else if ([cmd isEqualToString:@"start_forward_seek"]) {
+        MRMediaRemoteSendCommand(kMRStartForwardSeek, nil);
+    } else if ([cmd isEqualToString:@"end_forward_seek"]) {
+        MRMediaRemoteSendCommand(kMREndForwardSeek, nil);
+    } else if ([cmd isEqualToString:@"start_backward_seek"]) {
+        MRMediaRemoteSendCommand(kMRStartBackwardSeek, nil);
+    } else if ([cmd isEqualToString:@"end_backward_seek"]) {
+        MRMediaRemoteSendCommand(kMREndBackwardSeek, nil);
+    } else if ([cmd isEqualToString:@"go_back_fifteen_seconds"]) {
+        MRMediaRemoteSendCommand(kMRGoBackFifteenSeconds, nil);
+    } else if ([cmd isEqualToString:@"skip_fifteen_seconds"]) {
+        MRMediaRemoteSendCommand(kMRSkipFifteenSeconds, nil);
+    } else if ([cmd isEqualToString:@"like_track"]) {
+        MRMediaRemoteSendCommand(kMRLikeTrack, nil);
+    } else if ([cmd isEqualToString:@"ban_track"]) {
+        MRMediaRemoteSendCommand(kMRBanTrack, nil);
+    } else if ([cmd isEqualToString:@"add_to_wish_list"]) {
+        MRMediaRemoteSendCommand(kMRAddTrackToWishList, nil);
+    } else if ([cmd isEqualToString:@"remove_from_wish_list"]) {
+        MRMediaRemoteSendCommand(kMRRemoveTrackFromWishList, nil);
+    } else if ([cmd isEqualToString:@"set_time"] && parts.count >= 2) {
+        MRMediaRemoteSetElapsedTime([parts[1] doubleValue]);
+    } else if ([cmd isEqualToString:@"set_shuffle_mode"] && parts.count >= 2) {
+        MRMediaRemoteSetShuffleMode([parts[1] intValue]);
+    } else if ([cmd isEqualToString:@"set_repeat_mode"] && parts.count >= 2) {
+        MRMediaRemoteSetRepeatMode([parts[1] intValue]);
+    } else {
+        printErr([NSString stringWithFormat:@"Unknown inline command: %@", cmd]);
+    }
+}
+
+static void setupStdinReader(void) {
+    _stdinBuffer = [[NSMutableData alloc] init];
+
+    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    _stdinSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, STDIN_FILENO, 0, _queue);
+    if (_stdinSource == NULL) return;
+
+    dispatch_source_set_event_handler(_stdinSource, ^{
+        char buf[1024];
+        while (1) {
+            ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+            if (n > 0) {
+                [_stdinBuffer appendBytes:buf length:(NSUInteger)n];
+                continue;
+            }
+            if (n == 0) {
+                // EOF: parent closed stdin. Stop reading further.
+                dispatch_source_cancel(_stdinSource);
+                break;
+            }
+            // n < 0
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            if (errno == EINTR) continue;
+            dispatch_source_cancel(_stdinSource);
+            break;
+        }
+
+        while (1) {
+            const char *bytes = (const char *)[_stdinBuffer bytes];
+            NSUInteger len = [_stdinBuffer length];
+            NSUInteger i = 0;
+            while (i < len && bytes[i] != '\n') i++;
+            if (i >= len) break;
+            NSString *line = [[NSString alloc] initWithBytes:bytes
+                                                      length:i
+                                                    encoding:NSUTF8StringEncoding];
+            [_stdinBuffer replaceBytesInRange:NSMakeRange(0, i + 1)
+                                    withBytes:NULL
+                                       length:0];
+            if (line != nil) {
+                executeInlineCommand(line);
+                [line release];
+            }
+        }
+    });
+
+    dispatch_resume(_stdinSource);
+}
+
 void loop(void) {
     _runLoop = CFRunLoopGetCurrent();
+
+    setupStdinReader();
 
     MRMediaRemoteRegisterForNowPlayingNotifications(
         dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));

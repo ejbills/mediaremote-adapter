@@ -11,16 +11,23 @@ public class MediaController {
     }
 
     private var listeningProcess: Process?
+    private var listeningInputPipe: Pipe?
     private var dataBuffer = Data()
     private var lastTrackInfo: TrackInfo?
     private var eventCount = 0
     private let restartThreshold = 100
+    private let commandQueue = DispatchQueue(label: "mediaremote-adapter.commands")
+    private static let sigpipeIgnored: Void = {
+        signal(SIGPIPE, SIG_IGN)
+    }()
 
     public var onTrackInfoReceived: ((TrackInfo?) -> Void)?
     public var onListenerTerminated: (() -> Void)?
     public var onDecodingError: ((Error, Data) -> Void)?
 
-    public init() {}
+    public init() {
+        _ = MediaController.sigpipeIgnored
+    }
 
     private var libraryPath: String? {
         let bundle = Bundle(for: MediaController.self)
@@ -179,6 +186,10 @@ public class MediaController {
 
         listeningProcess?.arguments = [scriptPath, libraryPath, "loop"]
 
+        let inputPipe = Pipe()
+        listeningProcess?.standardInput = inputPipe
+        self.listeningInputPipe = inputPipe
+
         let outputPipe = Pipe()
         listeningProcess?.standardOutput = outputPipe
 
@@ -235,6 +246,7 @@ public class MediaController {
         listeningProcess?.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
                 self?.listeningProcess = nil
+                self?.listeningInputPipe = nil
                 if self?.eventCount != 0 {
                     self?.onListenerTerminated?()
                 }
@@ -252,132 +264,79 @@ public class MediaController {
     public func stopListening() {
         listeningProcess?.terminate()
         listeningProcess = nil
+        listeningInputPipe = nil
     }
 
-    public func play() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["play"])
+    private func sendCommand(_ arguments: [String]) {
+        guard !arguments.isEmpty else { return }
+        let line = arguments.joined(separator: " ") + "\n"
+        guard let data = line.data(using: .utf8) else { return }
+
+        commandQueue.async { [weak self] in
+            guard let self = self else { return }
+            if let process = self.listeningProcess,
+               process.isRunning,
+               let pipe = self.listeningInputPipe {
+                let handle = pipe.fileHandleForWriting
+                do {
+                    if #available(macOS 10.15.4, *) {
+                        try handle.write(contentsOf: data)
+                    } else {
+                        handle.write(data)
+                    }
+                    return
+                } catch {
+                    // Pipe closed under us; fall through to spawn.
+                }
+            }
+            _ = self.runPerlCommand(arguments: arguments)
         }
     }
 
-    public func pause() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["pause"])
-        }
-    }
+    public func play() { sendCommand(["play"]) }
 
-    public func togglePlayPause() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["toggle_play_pause"])
-        }
-    }
+    public func pause() { sendCommand(["pause"]) }
 
-    public func nextTrack() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["next_track"])
-        }
-    }
+    public func togglePlayPause() { sendCommand(["toggle_play_pause"]) }
 
-    public func previousTrack() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["previous_track"])
-        }
-    }
+    public func nextTrack() { sendCommand(["next_track"]) }
 
-    public func stop() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["stop"])
-        }
-    }
+    public func previousTrack() { sendCommand(["previous_track"]) }
 
-    public func setTime(seconds: Double) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["set_time", String(seconds)])
-        }
-    }
+    public func stop() { sendCommand(["stop"]) }
 
-    public func toggleShuffle() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["toggle_shuffle"])
-        }
-    }
+    public func setTime(seconds: Double) { sendCommand(["set_time", String(seconds)]) }
 
-    public func toggleRepeat() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["toggle_repeat"])
-        }
-    }
+    public func toggleShuffle() { sendCommand(["toggle_shuffle"]) }
 
-    public func startForwardSeek() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["start_forward_seek"])
-        }
-    }
+    public func toggleRepeat() { sendCommand(["toggle_repeat"]) }
 
-    public func endForwardSeek() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["end_forward_seek"])
-        }
-    }
+    public func startForwardSeek() { sendCommand(["start_forward_seek"]) }
 
-    public func startBackwardSeek() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["start_backward_seek"])
-        }
-    }
+    public func endForwardSeek() { sendCommand(["end_forward_seek"]) }
 
-    public func endBackwardSeek() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["end_backward_seek"])
-        }
-    }
+    public func startBackwardSeek() { sendCommand(["start_backward_seek"]) }
 
-    public func goBackFifteenSeconds() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["go_back_fifteen_seconds"])
-        }
-    }
+    public func endBackwardSeek() { sendCommand(["end_backward_seek"]) }
 
-    public func skipFifteenSeconds() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["skip_fifteen_seconds"])
-        }
-    }
+    public func goBackFifteenSeconds() { sendCommand(["go_back_fifteen_seconds"]) }
 
-    public func likeTrack() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["like_track"])
-        }
-    }
+    public func skipFifteenSeconds() { sendCommand(["skip_fifteen_seconds"]) }
 
-    public func banTrack() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["ban_track"])
-        }
-    }
+    public func likeTrack() { sendCommand(["like_track"]) }
 
-    public func addToWishList() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["add_to_wish_list"])
-        }
-    }
+    public func banTrack() { sendCommand(["ban_track"]) }
 
-    public func removeFromWishList() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["remove_from_wish_list"])
-        }
-    }
+    public func addToWishList() { sendCommand(["add_to_wish_list"]) }
+
+    public func removeFromWishList() { sendCommand(["remove_from_wish_list"]) }
 
     public func setShuffleMode(_ mode: TrackInfo.ShuffleMode) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["set_shuffle_mode", String(mode.rawValue)])
-        }
+        sendCommand(["set_shuffle_mode", String(mode.rawValue)])
     }
 
     public func setRepeatMode(_ mode: TrackInfo.RepeatMode) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.runPerlCommand(arguments: ["set_repeat_mode", String(mode.rawValue)])
-        }
+        sendCommand(["set_repeat_mode", String(mode.rawValue)])
     }
 
     private func isSameTrack(_ a: TrackInfo.Payload, _ b: TrackInfo.Payload) -> Bool {
@@ -424,6 +383,7 @@ public class MediaController {
     private func restartListeningProcess() {
         listeningProcess?.terminate()
         listeningProcess = nil
+        listeningInputPipe = nil
         dataBuffer.removeAll()
         eventCount = 0
 
