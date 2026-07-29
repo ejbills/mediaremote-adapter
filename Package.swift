@@ -26,7 +26,7 @@ let package = Package(
             dependencies: [],
             publicHeadersPath: "include",
             cSettings: [
-                .unsafeFlags(["-fno-objc-arc"])
+                .unsafeFlags(["-fobjc-arc"])
             ],
             linkerSettings: [
                 .unsafeFlags(["-framework", "Foundation"]),

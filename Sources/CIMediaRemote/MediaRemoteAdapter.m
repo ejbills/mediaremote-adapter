@@ -89,12 +89,12 @@ convertNowPlayingInformation(NSDictionary *information) {
       }
     };
 
-    setKey((NSString *)kTitle, (id)kMRMediaRemoteNowPlayingInfoTitle);
-    setKey((NSString *)kArtist, (id)kMRMediaRemoteNowPlayingInfoArtist);
-    setKey((NSString *)kAlbum, (id)kMRMediaRemoteNowPlayingInfoAlbum);
+    setKey((NSString *)kTitle, (__bridge id)kMRMediaRemoteNowPlayingInfoTitle);
+    setKey((NSString *)kArtist, (__bridge id)kMRMediaRemoteNowPlayingInfoArtist);
+    setKey((NSString *)kAlbum, (__bridge id)kMRMediaRemoteNowPlayingInfoAlbum);
     setValue((NSString *)kDurationMicros, ^id {
       id duration =
-          information[(NSString *)kMRMediaRemoteNowPlayingInfoDuration];
+          information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoDuration];
       if (duration != nil) {
           NSTimeInterval durationMicros = [duration doubleValue] * 1000 * 1000;
           if (isinf(durationMicros) || isnan(durationMicros)) {
@@ -106,7 +106,7 @@ convertNowPlayingInformation(NSDictionary *information) {
     });
     setValue((NSString *)kElapsedTimeMicros, ^id {
       id elapsedTimeValue =
-          information[(NSString *)kMRMediaRemoteNowPlayingInfoElapsedTime];
+          information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoElapsedTime];
       if (elapsedTimeValue != nil) {
           NSTimeInterval elapsedTimeMicros =
               [elapsedTimeValue doubleValue] * 1000 * 1000;
@@ -119,7 +119,7 @@ convertNowPlayingInformation(NSDictionary *information) {
     });
     setValue((NSString *)kTimestampEpochMicros, ^id {
       NSDate *timestampValue =
-          information[(NSString *)kMRMediaRemoteNowPlayingInfoTimestamp];
+          information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoTimestamp];
       if (timestampValue != nil) {
           NSTimeInterval timestampEpoch = [timestampValue timeIntervalSince1970];
           NSTimeInterval timestampEpochMicro = timestampEpoch * 1000 * 1000;
@@ -128,25 +128,25 @@ convertNowPlayingInformation(NSDictionary *information) {
       return nil;
     });
     setKey((NSString *)kArtworkMimeType,
-           (id)kMRMediaRemoteNowPlayingInfoArtworkMIMEType);
+           (__bridge id)kMRMediaRemoteNowPlayingInfoArtworkMIMEType);
     setValue((NSString *)kArtworkDataBase64, ^id {
       NSData *artworkDataValue =
-          (NSData *)information[(NSString *)kMRMediaRemoteNowPlayingInfoArtworkData];
+          (NSData *)information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoArtworkData];
       if (artworkDataValue != nil) {
           return [artworkDataValue base64EncodedStringWithOptions:0];
       }
       return nil;
     });
     setValue((NSString *)kShuffleMode, ^id {
-      NSNumber *mode = information[(NSString *)kMRMediaRemoteNowPlayingInfoShuffleMode];
+      NSNumber *mode = information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoShuffleMode];
       return mode;
     });
     setValue((NSString *)kRepeatMode, ^id {
-      NSNumber *mode = information[(NSString *)kMRMediaRemoteNowPlayingInfoRepeatMode];
+      NSNumber *mode = information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoRepeatMode];
       return mode;
     });
     setValue((NSString *)kPlaybackRate, ^id {
-      NSNumber *rate = information[(NSString *)kMRMediaRemoteNowPlayingInfoPlaybackRate];
+      NSNumber *rate = information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoPlaybackRate];
       return rate;
     });
 
@@ -177,7 +177,7 @@ static void processNowPlayingInfo(NSDictionary *nowPlayingInfo, BOOL isPlaying, 
         printOut(@"NIL");
         return;
     }
-    id title = nowPlayingInfo[(NSString *)kMRMediaRemoteNowPlayingInfoTitle];
+    id title = nowPlayingInfo[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoTitle];
     if (title == nil || title == [NSNull null] || ([title isKindOfClass:[NSString class]] && [(NSString *)title length] == 0)) return;
 
     NSMutableDictionary *data = convertNowPlayingInformation(nowPlayingInfo);
@@ -195,35 +195,41 @@ static void processNowPlayingInfo(NSDictionary *nowPlayingInfo, BOOL isPlaying, 
 // and passes it to the processing function.
 static void fetchAndProcess(int pid) {
     MRMediaRemoteGetNowPlayingInfo(_queue, ^(CFDictionaryRef information) {
-        if (information == NULL) {
-            printOut(@"NIL");
-            return;
-        }
-        NSDictionary *infoDict = [(__bridge NSDictionary *)information copy];
-        MRMediaRemoteGetNowPlayingApplicationIsPlaying(_queue, ^(Boolean isPlaying) {
-            void (^processWithPid)(int) = ^(int finalPid) {
-                if (finalPid > 0) {
-                    __block bool appFound = false;
-                    appForPID(finalPid, ^(NSRunningApplication *process) {
-                        appFound = true;
-                        processNowPlayingInfo(infoDict, isPlaying, process);
-                    });
-                    if (!appFound) {
-                        processNowPlayingInfo(infoDict, isPlaying, nil);
-                    }
-                } else {
-                    processNowPlayingInfo(infoDict, isPlaying, nil);
-                }
-            };
-
-            if (pid > 0) {
-                processWithPid(pid);
-            } else {
-                MRMediaRemoteGetNowPlayingApplicationPID(_queue, ^(int fetchedPid) {
-                    processWithPid(fetchedPid);
-                });
+        @autoreleasepool {
+            if (information == NULL) {
+                printOut(@"NIL");
+                return;
             }
-        });
+            NSDictionary *infoDict = [(__bridge NSDictionary *)information copy];
+            MRMediaRemoteGetNowPlayingApplicationIsPlaying(_queue, ^(Boolean isPlaying) {
+                @autoreleasepool {
+                    void (^processWithPid)(int) = ^(int finalPid) {
+                        if (finalPid > 0) {
+                            __block bool appFound = false;
+                            appForPID(finalPid, ^(NSRunningApplication *process) {
+                                appFound = true;
+                                processNowPlayingInfo(infoDict, isPlaying, process);
+                            });
+                            if (!appFound) {
+                                processNowPlayingInfo(infoDict, isPlaying, nil);
+                            }
+                        } else {
+                            processNowPlayingInfo(infoDict, isPlaying, nil);
+                        }
+                    };
+
+                    if (pid > 0) {
+                        processWithPid(pid);
+                    } else {
+                        MRMediaRemoteGetNowPlayingApplicationPID(_queue, ^(int fetchedPid) {
+                            @autoreleasepool {
+                                processWithPid(fetchedPid);
+                            }
+                        });
+                    }
+                }
+            });
+        }
     });
 }
 
@@ -333,6 +339,7 @@ static void setupStdinReader(void) {
     if (_stdinSource == NULL) return;
 
     dispatch_source_set_event_handler(_stdinSource, ^{
+        @autoreleasepool {
         char buf[1024];
         while (1) {
             ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
@@ -366,8 +373,8 @@ static void setupStdinReader(void) {
                                        length:0];
             if (line != nil) {
                 executeInlineCommand(line);
-                [line release];
             }
+        }
         }
     });
 
@@ -398,9 +405,11 @@ void loop(void) {
 
       // Create a new block to be executed after the delay.
       _debounce_block = dispatch_block_create(0, ^{
-          id pidValue = notification.userInfo[(NSString *)kMRMediaRemoteNowPlayingApplicationPIDUserInfoKey];
-          int pid = (pidValue != nil) ? [pidValue intValue] : 0;
-          fetchAndProcess(pid);
+          @autoreleasepool {
+              id pidValue = notification.userInfo[(__bridge NSString *)kMRMediaRemoteNowPlayingApplicationPIDUserInfoKey];
+              int pid = (pidValue != nil) ? [pidValue intValue] : 0;
+              fetchAndProcess(pid);
+          }
       });
       
       // Schedule the new block to run after a 100ms delay.
@@ -408,13 +417,13 @@ void loop(void) {
     };
     
     [[NSNotificationCenter defaultCenter]
-        addObserverForName:(NSString *)kMRMediaRemoteNowPlayingInfoDidChangeNotification
+        addObserverForName:(__bridge NSString *)kMRMediaRemoteNowPlayingInfoDidChangeNotification
                     object:nil
                      queue:nil
                 usingBlock:handler];
 
     [[NSNotificationCenter defaultCenter]
-        addObserverForName:(NSString *)kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification
+        addObserverForName:(__bridge NSString *)kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification
                     object:nil
                      queue:nil
                 usingBlock:handler];
@@ -528,29 +537,33 @@ void get(void) {
     __block BOOL completed = NO;
 
     MRMediaRemoteGetNowPlayingInfo(_queue, ^(CFDictionaryRef information) {
-        if (information == NULL) {
-            printOut(@"NIL");
-            completed = YES;
-            return;
-        }
-        NSDictionary *infoDict = [(__bridge NSDictionary *)information copy];
-        MRMediaRemoteGetNowPlayingApplicationIsPlaying(_queue, ^(Boolean isPlaying) {
-            MRMediaRemoteGetNowPlayingApplicationPID(_queue, ^(int fetchedPid) {
-                if (fetchedPid > 0) {
-                    __block bool appFound = false;
-                    appForPID(fetchedPid, ^(NSRunningApplication *process) {
-                        appFound = true;
-                        processNowPlayingInfo(infoDict, isPlaying, process);
-                    });
-                    if (!appFound) {
-                        processNowPlayingInfo(infoDict, isPlaying, nil);
-                    }
-                } else {
-                    processNowPlayingInfo(infoDict, isPlaying, nil);
-                }
+        @autoreleasepool {
+            if (information == NULL) {
+                printOut(@"NIL");
                 completed = YES;
+                return;
+            }
+            NSDictionary *infoDict = [(__bridge NSDictionary *)information copy];
+            MRMediaRemoteGetNowPlayingApplicationIsPlaying(_queue, ^(Boolean isPlaying) {
+                MRMediaRemoteGetNowPlayingApplicationPID(_queue, ^(int fetchedPid) {
+                    @autoreleasepool {
+                        if (fetchedPid > 0) {
+                            __block bool appFound = false;
+                            appForPID(fetchedPid, ^(NSRunningApplication *process) {
+                                appFound = true;
+                                processNowPlayingInfo(infoDict, isPlaying, process);
+                            });
+                            if (!appFound) {
+                                processNowPlayingInfo(infoDict, isPlaying, nil);
+                            }
+                        } else {
+                            processNowPlayingInfo(infoDict, isPlaying, nil);
+                        }
+                        completed = YES;
+                    }
+                });
             });
-        });
+        }
     });
 
     // Wait for completion with timeout
