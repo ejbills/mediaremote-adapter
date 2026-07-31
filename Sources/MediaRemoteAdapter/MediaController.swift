@@ -16,6 +16,7 @@ public class MediaController {
     private var dataBufferSearchStart = 0
     private var lastTrackInfo: TrackInfo?
     private var eventCount = 0
+    private let bufferLock = NSLock()
     private let restartThreshold = 100
     private let commandQueue = DispatchQueue(label: "mediaremote-adapter.commands")
     private static let sigpipeIgnored: Void = {
@@ -206,6 +207,9 @@ public class MediaController {
                 fileHandle.readabilityHandler = nil
                 return
             }
+            
+            self.bufferLock.lock()
+            defer { self.bufferLock.unlock() }
 
             self.dataBuffer.append(incomingData)
 
@@ -275,6 +279,9 @@ public class MediaController {
         listeningProcess?.terminate()
         listeningProcess = nil
         listeningInputPipe = nil
+        
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
         dataBuffer.removeAll()
         dataBufferSearchStart = 0
     }
@@ -397,6 +404,9 @@ public class MediaController {
         listeningProcess?.terminate()
         listeningProcess = nil
         listeningInputPipe = nil
+        
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
         dataBuffer.removeAll()
         dataBufferSearchStart = 0
         eventCount = 0
