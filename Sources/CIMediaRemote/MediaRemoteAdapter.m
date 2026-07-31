@@ -149,8 +149,6 @@ convertNowPlayingInformation(NSDictionary *information) {
       NSNumber *rate = information[(__bridge NSString *)kMRMediaRemoteNowPlayingInfoPlaybackRate];
       return rate;
     });
-    setKey((NSString *)kContentItemIdentifier, (id)kMRMediaRemoteNowPlayingInfoContentItemIdentifier);
-    setKey((NSString *)kAlbumiTunesStoreAdamIdentifier, (id)kMRMediaRemoteNowPlayingInfoAlbumiTunesStoreAdamIdentifier);
 
     return data;
 }

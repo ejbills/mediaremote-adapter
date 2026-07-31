@@ -18,5 +18,3 @@ NSString *const kPID = @"PID";
 NSString *const kShuffleMode = @"shuffleMode";
 NSString *const kRepeatMode = @"repeatMode";
 NSString *const kPlaybackRate = @"playbackRate";
-NSString *const kContentItemIdentifier = @"contentItemIdentifier";
-NSString *const kAlbumiTunesStoreAdamIdentifier = @"albumiTunesStoreAdamIdentifier";

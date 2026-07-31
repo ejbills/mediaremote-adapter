@@ -36,8 +36,6 @@ public struct TrackInfo: Codable {
         public let shuffleMode: ShuffleMode?
         public let repeatMode: RepeatMode?
         public let playbackRate: Double?
-        public let contentItemIdentifier: String?
-        public let albumiTunesStoreAdamIdentifier: String?
 
         public let artwork: NSImage?
 
@@ -67,7 +65,7 @@ public struct TrackInfo: Codable {
         }
 
         enum CodingKeys: String, CodingKey {
-            case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros, PID, shuffleMode, repeatMode, playbackRate, contentItemIdentifier, albumiTunesStoreAdamIdentifier
+            case title, artist, album, isPlaying, durationMicros, elapsedTimeMicros, applicationName, bundleIdentifier, artworkDataBase64, artworkMimeType, timestampEpochMicros, PID, shuffleMode, repeatMode, playbackRate
         }
 
         public init(
@@ -86,8 +84,6 @@ public struct TrackInfo: Codable {
             shuffleMode: ShuffleMode? = nil,
             repeatMode: RepeatMode? = nil,
             playbackRate: Double? = nil,
-            contentItemIdentifier: String? = nil,
-            albumiTunesStoreAdamIdentifier: String? = nil,
             artwork: NSImage? = nil
         ) {
             self.title = title
@@ -105,8 +101,6 @@ public struct TrackInfo: Codable {
             self.shuffleMode = shuffleMode
             self.repeatMode = repeatMode
             self.playbackRate = playbackRate
-            self.contentItemIdentifier = contentItemIdentifier
-            self.albumiTunesStoreAdamIdentifier = albumiTunesStoreAdamIdentifier
             self.artwork = artwork
         }
 
@@ -135,8 +129,6 @@ public struct TrackInfo: Codable {
             self.shuffleMode = try? container.decodeIfPresent(ShuffleMode.self, forKey: .shuffleMode)
             self.repeatMode = try? container.decodeIfPresent(RepeatMode.self, forKey: .repeatMode)
             self.playbackRate = try container.decodeIfPresent(Double.self, forKey: .playbackRate)
-            self.contentItemIdentifier = try container.decodeIfPresent(String.self, forKey: .contentItemIdentifier)
-            self.albumiTunesStoreAdamIdentifier = try container.decodeIfPresent(String.self, forKey: .albumiTunesStoreAdamIdentifier)
 
             if let boolValue = try? container.decode(Bool.self, forKey: .isPlaying) {
                 self.isPlaying = boolValue
