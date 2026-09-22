@@ -71,15 +71,13 @@ public class MediaController: @unchecked Sendable {
         }
         let buffers = PipeBuffers()
 
-        outputPipe.fileHandleForReading.readabilityHandler = { [buffers] handle in
-            let data = handle.availableData
+        PipeReader.attach(outputPipe.fileHandleForReading) { [buffers] data in
             buffers.lock.lock()
             buffers.output.append(data)
             buffers.lock.unlock()
         }
 
-        errorPipe.fileHandleForReading.readabilityHandler = { [buffers] handle in
-            let data = handle.availableData
+        PipeReader.attach(errorPipe.fileHandleForReading) { [buffers] data in
             buffers.lock.lock()
             buffers.error.append(data)
             buffers.lock.unlock()
@@ -119,7 +117,7 @@ public class MediaController: @unchecked Sendable {
         }
 
         // The completion is forwarded to the main queue inside every handler below.
-nonisolated(unsafe) let onReceive = onReceive
+        nonisolated(unsafe) let onReceive = onReceive
         let getProcess = Process()
         getProcess.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
 
@@ -138,35 +136,47 @@ nonisolated(unsafe) let onReceive = onReceive
         let outputPipe = Pipe()
         getProcess.standardOutput = outputPipe
 
-        outputPipe.fileHandleForReading.readabilityHandler = { [weak lineState] fileHandle in
-            guard let lineState else { return }
-            let incomingData = fileHandle.availableData
-            if incomingData.isEmpty {
-                fileHandle.readabilityHandler = nil
-                return
+        // `lineState` is captured STRONGLY by both closures: it is a local, so a weak capture let
+        // it die the moment this function returned — the handler then returned without draining
+        // the pipe (a 100% CPU spin per call) and the exit handler read "already delivered", so
+        // the completion never ran at all. The "no line ever came" fallback runs at EOF, not at
+        // process exit: exit can be observed before the last read, which delivered nil and then
+        // the real line.
+        PipeReader.attach(outputPipe.fileHandleForReading, onEOF: { [lineState] in
+            lineState.lock.lock()
+            let executed = lineState.callbackExecuted
+            lineState.callbackExecuted = true
+            lineState.lock.unlock()
+            if !executed {
+                DispatchQueue.main.async { onReceive(nil) }
             }
+        }) { [lineState] incomingData in
 
             // Deliver exactly one result on the main queue; guarded by the state machine's lock.
             func deliver(_ trackInfo: TrackInfo?) {
                 DispatchQueue.main.async { onReceive(trackInfo) }
             }
 
+            // First NON-EMPTY line wins; a blank line is skipped rather than consuming the one
+            // delivery.
             var lineData: Data?
             lineState.lock.lock()
             lineState.buffer.append(incomingData)
-            if !lineState.callbackExecuted,
-               let newlineData = "\n".data(using: .utf8),
-               let range = lineState.buffer.firstRange(of: newlineData, in: lineState.searchStart..<lineState.buffer.count) {
-                lineData = lineState.buffer.subdata(in: 0..<range.lowerBound)
+            while !lineState.callbackExecuted,
+                  let newlineData = "\n".data(using: .utf8),
+                  let range = lineState.buffer.firstRange(of: newlineData, in: lineState.searchStart..<lineState.buffer.count) {
+                let line = lineState.buffer.subdata(in: 0..<range.lowerBound)
                 lineState.buffer.removeSubrange(0..<range.upperBound)
                 lineState.searchStart = 0
-                lineState.callbackExecuted = true
-            } else {
-                lineState.searchStart = lineState.buffer.count
+                if !line.isEmpty {
+                    lineData = line
+                    lineState.callbackExecuted = true
+                }
             }
+            lineState.searchStart = lineState.buffer.count
             lineState.lock.unlock()
 
-            guard let lineData, !lineData.isEmpty else { return }
+            guard let lineData else { return }
             if lineData == "NIL".data(using: .utf8) {
                 deliver(nil)
                 return
@@ -175,18 +185,6 @@ nonisolated(unsafe) let onReceive = onReceive
                 deliver(try JSONDecoder().decode(TrackInfo.self, from: lineData))
             } catch {
                 deliver(nil)
-            }
-        }
-
-        getProcess.terminationHandler = { [weak lineState] _ in
-            var executed = true
-            if let lineState {
-                lineState.lock.lock()
-                executed = lineState.callbackExecuted
-                lineState.lock.unlock()
-            }
-            if !executed {
-                DispatchQueue.main.async { onReceive(nil) }
             }
         }
 
@@ -226,15 +224,9 @@ nonisolated(unsafe) let onReceive = onReceive
         let outputPipe = Pipe()
         listeningProcess?.standardOutput = outputPipe
 
-        outputPipe.fileHandleForReading.readabilityHandler = { [weak self] fileHandle in
+        PipeReader.attach(outputPipe.fileHandleForReading) { [weak self] incomingData in
             guard let self = self else { return }
 
-            let incomingData = fileHandle.availableData
-            if incomingData.isEmpty {
-                fileHandle.readabilityHandler = nil
-                return
-            }
-            
             self.bufferLock.lock()
             defer { self.bufferLock.unlock() }
 
