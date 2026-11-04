@@ -1,26 +1,26 @@
 import AppKit
 import Foundation
 
-public struct TrackInfo: Codable {
+public struct TrackInfo: Codable, Sendable {
     public let payload: Payload
 
     public init(payload: Payload) {
         self.payload = payload
     }
 
-    public enum ShuffleMode: Int, Codable {
+    public enum ShuffleMode: Int, Codable, Sendable {
         case off = 0
         case songs = 1
         case albums = 2
     }
 
-    public enum RepeatMode: Int, Codable {
+    public enum RepeatMode: Int, Codable, Sendable {
         case off = 0
         case one = 1
         case all = 2
     }
 
-    public struct Payload: Codable {
+    public struct Payload: Codable, Sendable {
         public let title: String?
         public let artist: String?
         public let album: String?
